@@ -1,0 +1,314 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|ARM">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM">
+      <Configuration>Release</Configuration>
+      <Platform>ARM</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{005bf7bf-48f1-4291-86a0-380d2694fd1b}</ProjectGuid>
+    <RootNamespace>PocketSphinxRntComp</RootNamespace>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>11.0</MinimumVisualStudioVersion>
+    <WinMDAssembly>true</WinMDAssembly>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v110_wp80</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v110_wp80</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v110_wp80</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v110_wp80</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <GenerateManifest>false</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>_WINRT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalUsingDirectories>$(WindowsSDK_MetadataPath);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
+      <CompileAsWinRT>true</CompileAsWinRT>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>ole32.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateWindowsMetadata>true</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>_WINRT_DLL;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalUsingDirectories>$(WindowsSDK_MetadataPath);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
+      <CompileAsWinRT>true</CompileAsWinRT>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>ole32.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateWindowsMetadata>true</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
+    <ClCompile>
+      <PreprocessorDefinitions>HAVE_CONFIG_H;_WIN32;_WIN32_WP;_CRT_SECURE_NO_WARNINGS;_WINRT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalUsingDirectories>$(WindowsSDK_MetadataPath);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <AdditionalIncludeDirectories>$(ProjectDir)/include;$(ProjectDir)/include/win32;$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>ole32.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateWindowsMetadata>true</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
+    <ClCompile>
+      <PreprocessorDefinitions>_WINRT_DLL;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalUsingDirectories>$(WindowsSDK_MetadataPath);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
+      <CompileAsWinRT>true</CompileAsWinRT>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>ole32.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateWindowsMetadata>true</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <Reference Include="platform.winmd">
+      <IsWinMDFile>true</IsWinMDFile>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\cmdln_macro.h" />
+    <ClInclude Include="include\pocketsphinx.h" />
+    <ClInclude Include="include\pocketsphinx_export.h" />
+    <ClInclude Include="include\ps_lattice.h" />
+    <ClInclude Include="include\ps_mllr.h" />
+    <ClInclude Include="include\ps_search.h" />
+    <ClInclude Include="include\sphinxbase\ad.h" />
+    <ClInclude Include="include\sphinxbase\agc.h" />
+    <ClInclude Include="include\sphinxbase\bio.h" />
+    <ClInclude Include="include\sphinxbase\bitvec.h" />
+    <ClInclude Include="include\sphinxbase\byteorder.h" />
+    <ClInclude Include="include\sphinxbase\case.h" />
+    <ClInclude Include="include\sphinxbase\ckd_alloc.h" />
+    <ClInclude Include="include\sphinxbase\clapack_lite.h" />
+    <ClInclude Include="include\sphinxbase\cmd_ln.h" />
+    <ClInclude Include="include\sphinxbase\cmn.h" />
+    <ClInclude Include="include\sphinxbase\err.h" />
+    <ClInclude Include="include\sphinxbase\f2c.h" />
+    <ClInclude Include="include\sphinxbase\fe.h" />
+    <ClInclude Include="include\sphinxbase\feat.h" />
+    <ClInclude Include="include\sphinxbase\filename.h" />
+    <ClInclude Include="include\sphinxbase\fixpoint.h" />
+    <ClInclude Include="include\sphinxbase\fsg_model.h" />
+    <ClInclude Include="include\sphinxbase\genrand.h" />
+    <ClInclude Include="include\sphinxbase\glist.h" />
+    <ClInclude Include="include\sphinxbase\hash_table.h" />
+    <ClInclude Include="include\sphinxbase\heap.h" />
+    <ClInclude Include="include\sphinxbase\huff_code.h" />
+    <ClInclude Include="include\sphinxbase\jsgf.h" />
+    <ClInclude Include="include\sphinxbase\listelem_alloc.h" />
+    <ClInclude Include="include\sphinxbase\logmath.h" />
+    <ClInclude Include="include\sphinxbase\matrix.h" />
+    <ClInclude Include="include\sphinxbase\mmio.h" />
+    <ClInclude Include="include\sphinxbase\mulaw.h" />
+    <ClInclude Include="include\sphinxbase\ngram_model.h" />
+    <ClInclude Include="include\sphinxbase\pio.h" />
+    <ClInclude Include="include\sphinxbase\prim_type.h" />
+    <ClInclude Include="include\sphinxbase\profile.h" />
+    <ClInclude Include="include\sphinxbase\sbthread.h" />
+    <ClInclude Include="include\sphinxbase\sphinxbase_export.h" />
+    <ClInclude Include="include\sphinxbase\strfuncs.h" />
+    <ClInclude Include="include\sphinxbase\yin.h" />
+    <ClInclude Include="include\win32\config.h" />
+    <ClInclude Include="include\win32\sphinx_config.h" />
+    <ClInclude Include="libpocketsphinx\acmod.h" />
+    <ClInclude Include="libpocketsphinx\allphone_search.h" />
+    <ClInclude Include="libpocketsphinx\bin_mdef.h" />
+    <ClInclude Include="libpocketsphinx\blkarray_list.h" />
+    <ClInclude Include="libpocketsphinx\dict.h" />
+    <ClInclude Include="libpocketsphinx\dict2pid.h" />
+    <ClInclude Include="libpocketsphinx\fsg_history.h" />
+    <ClInclude Include="libpocketsphinx\fsg_lextree.h" />
+    <ClInclude Include="libpocketsphinx\fsg_search_internal.h" />
+    <ClInclude Include="libpocketsphinx\hmm.h" />
+    <ClInclude Include="libpocketsphinx\kws_detections.h" />
+    <ClInclude Include="libpocketsphinx\kws_search.h" />
+    <ClInclude Include="libpocketsphinx\mdef.h" />
+    <ClInclude Include="libpocketsphinx\ms_gauden.h" />
+    <ClInclude Include="libpocketsphinx\ms_mgau.h" />
+    <ClInclude Include="libpocketsphinx\ms_senone.h" />
+    <ClInclude Include="libpocketsphinx\ngram_search.h" />
+    <ClInclude Include="libpocketsphinx\ngram_search_fwdflat.h" />
+    <ClInclude Include="libpocketsphinx\ngram_search_fwdtree.h" />
+    <ClInclude Include="libpocketsphinx\phone_loop_search.h" />
+    <ClInclude Include="libpocketsphinx\pocketsphinx_internal.h" />
+    <ClInclude Include="libpocketsphinx\ps_alignment.h" />
+    <ClInclude Include="libpocketsphinx\ps_lattice_internal.h" />
+    <ClInclude Include="libpocketsphinx\ptm_mgau.h" />
+    <ClInclude Include="libpocketsphinx\s2_semi_mgau.h" />
+    <ClInclude Include="libpocketsphinx\s3types.h" />
+    <ClInclude Include="libpocketsphinx\state_align_search.h" />
+    <ClInclude Include="libpocketsphinx\tied_mgau_common.h" />
+    <ClInclude Include="libpocketsphinx\tmat.h" />
+    <ClInclude Include="libpocketsphinx\vector.h" />
+    <ClInclude Include="libsphinxbase\fe\fe_internal.h" />
+    <ClInclude Include="libsphinxbase\fe\fe_noise.h" />
+    <ClInclude Include="libsphinxbase\fe\fe_prespch_buf.h" />
+    <ClInclude Include="libsphinxbase\fe\fe_type.h" />
+    <ClInclude Include="libsphinxbase\fe\fe_warp.h" />
+    <ClInclude Include="libsphinxbase\fe\fe_warp_affine.h" />
+    <ClInclude Include="libsphinxbase\fe\fe_warp_inverse_linear.h" />
+    <ClInclude Include="libsphinxbase\fe\fe_warp_piecewise_linear.h" />
+    <ClInclude Include="libsphinxbase\lm\jsgf_internal.h" />
+    <ClInclude Include="libsphinxbase\lm\jsgf_parser.h" />
+    <ClInclude Include="libsphinxbase\lm\jsgf_scanner.h" />
+    <ClInclude Include="libsphinxbase\lm\lm3g_model.h" />
+    <ClInclude Include="libsphinxbase\lm\ngram_model_arpa.h" />
+    <ClInclude Include="libsphinxbase\lm\ngram_model_dmp.h" />
+    <ClInclude Include="libsphinxbase\lm\ngram_model_internal.h" />
+    <ClInclude Include="libsphinxbase\lm\ngram_model_set.h" />
+    <ClInclude Include="SpeechRecognizer.h" />
+    <ClInclude Include="pch.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="libpocketsphinx\acmod.c" />
+    <ClCompile Include="libpocketsphinx\allphone_search.c" />
+    <ClCompile Include="libpocketsphinx\bin_mdef.c" />
+    <ClCompile Include="libpocketsphinx\blkarray_list.c" />
+    <ClCompile Include="libpocketsphinx\dict.c" />
+    <ClCompile Include="libpocketsphinx\dict2pid.c" />
+    <ClCompile Include="libpocketsphinx\fsg_history.c" />
+    <ClCompile Include="libpocketsphinx\fsg_lextree.c" />
+    <ClCompile Include="libpocketsphinx\fsg_search.c" />
+    <ClCompile Include="libpocketsphinx\hmm.c" />
+    <ClCompile Include="libpocketsphinx\kws_detections.c" />
+    <ClCompile Include="libpocketsphinx\kws_search.c" />
+    <ClCompile Include="libpocketsphinx\mdef.c" />
+    <ClCompile Include="libpocketsphinx\ms_gauden.c" />
+    <ClCompile Include="libpocketsphinx\ms_mgau.c" />
+    <ClCompile Include="libpocketsphinx\ms_senone.c" />
+    <ClCompile Include="libpocketsphinx\ngram_search.c" />
+    <ClCompile Include="libpocketsphinx\ngram_search_fwdflat.c" />
+    <ClCompile Include="libpocketsphinx\ngram_search_fwdtree.c" />
+    <ClCompile Include="libpocketsphinx\phone_loop_search.c" />
+    <ClCompile Include="libpocketsphinx\pocketsphinx.c" />
+    <ClCompile Include="libpocketsphinx\ps_alignment.c" />
+    <ClCompile Include="libpocketsphinx\ps_lattice.c" />
+    <ClCompile Include="libpocketsphinx\ps_mllr.c" />
+    <ClCompile Include="libpocketsphinx\ptm_mgau.c" />
+    <ClCompile Include="libpocketsphinx\s2_semi_mgau.c" />
+    <ClCompile Include="libpocketsphinx\state_align_search.c" />
+    <ClCompile Include="libpocketsphinx\tmat.c" />
+    <ClCompile Include="libpocketsphinx\vector.c" />
+    <ClCompile Include="libsphinxbase\feat\agc.c" />
+    <ClCompile Include="libsphinxbase\feat\cmn.c" />
+    <ClCompile Include="libsphinxbase\feat\cmn_prior.c" />
+    <ClCompile Include="libsphinxbase\feat\feat.c" />
+    <ClCompile Include="libsphinxbase\feat\lda.c" />
+    <ClCompile Include="libsphinxbase\fe\fe_interface.c" />
+    <ClCompile Include="libsphinxbase\fe\fe_noise.c" />
+    <ClCompile Include="libsphinxbase\fe\fe_prespch_buf.c" />
+    <ClCompile Include="libsphinxbase\fe\fe_sigproc.c" />
+    <ClCompile Include="libsphinxbase\fe\fe_warp.c" />
+    <ClCompile Include="libsphinxbase\fe\fe_warp_affine.c" />
+    <ClCompile Include="libsphinxbase\fe\fe_warp_inverse_linear.c" />
+    <ClCompile Include="libsphinxbase\fe\fe_warp_piecewise_linear.c" />
+    <ClCompile Include="libsphinxbase\fe\fixlog.c" />
+    <ClCompile Include="libsphinxbase\fe\yin.c" />
+    <ClCompile Include="libsphinxbase\lm\fsg_model.c" />
+    <ClCompile Include="libsphinxbase\lm\jsgf.c" />
+    <ClCompile Include="libsphinxbase\lm\jsgf_parser.c" />
+    <ClCompile Include="libsphinxbase\lm\jsgf_scanner.c" />
+    <ClCompile Include="libsphinxbase\lm\lm3g_model.c" />
+    <ClCompile Include="libsphinxbase\lm\ngram_model.c" />
+    <ClCompile Include="libsphinxbase\lm\ngram_model_arpa.c" />
+    <ClCompile Include="libsphinxbase\lm\ngram_model_dmp.c" />
+    <ClCompile Include="libsphinxbase\lm\ngram_model_dmp32.c" />
+    <ClCompile Include="libsphinxbase\lm\ngram_model_set.c" />
+    <ClCompile Include="libsphinxbase\util\bio.c" />
+    <ClCompile Include="libsphinxbase\util\bitvec.c" />
+    <ClCompile Include="libsphinxbase\util\blas_lite.c" />
+    <ClCompile Include="libsphinxbase\util\case.c" />
+    <ClCompile Include="libsphinxbase\util\ckd_alloc.c" />
+    <ClCompile Include="libsphinxbase\util\cmd_ln.c" />
+    <ClCompile Include="libsphinxbase\util\dtoa.c" />
+    <ClCompile Include="libsphinxbase\util\err.c" />
+    <ClCompile Include="libsphinxbase\util\errno.c" />
+    <ClCompile Include="libsphinxbase\util\f2c_lite.c" />
+    <ClCompile Include="libsphinxbase\util\filename.c" />
+    <ClCompile Include="libsphinxbase\util\genrand.c" />
+    <ClCompile Include="libsphinxbase\util\glist.c" />
+    <ClCompile Include="libsphinxbase\util\hash_table.c" />
+    <ClCompile Include="libsphinxbase\util\heap.c" />
+    <ClCompile Include="libsphinxbase\util\huff_code.c" />
+    <ClCompile Include="libsphinxbase\util\listelem_alloc.c" />
+    <ClCompile Include="libsphinxbase\util\logmath.c" />
+    <ClCompile Include="libsphinxbase\util\matrix.c" />
+    <ClCompile Include="libsphinxbase\util\mmio.c" />
+    <ClCompile Include="libsphinxbase\util\pio.c" />
+    <ClCompile Include="libsphinxbase\util\profile.c" />
+    <ClCompile Include="libsphinxbase\util\sbthread.c" />
+    <ClCompile Include="libsphinxbase\util\slamch.c" />
+    <ClCompile Include="libsphinxbase\util\slapack_lite.c" />
+    <ClCompile Include="libsphinxbase\util\strfuncs.c" />
+    <ClCompile Include="libsphinxbase\util\utf8.c" />
+    <!--<ClCompile Include="PocketSphinxRntComp.cpp" />-->
+    <ClCompile Include="SpeechRecognizer.cpp">
+      <CompileAsWinRT Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">true</CompileAsWinRT>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(MSBuildExtensionsPath)\Microsoft\WindowsPhone\v$(TargetPlatformVersion)\Microsoft.Cpp.WindowsPhone.$(TargetPlatformVersion).targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
