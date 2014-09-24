@@ -55,7 +55,6 @@
     <ClCompile Include="libsphinxbase\util\mmio.c" />
     <ClCompile Include="libsphinxbase\util\pio.c" />
     <ClCompile Include="libsphinxbase\util\profile.c" />
-    <ClCompile Include="libsphinxbase\util\sbthread.c" />
     <ClCompile Include="libsphinxbase\util\slamch.c" />
     <ClCompile Include="libsphinxbase\util\slapack_lite.c" />
     <ClCompile Include="libsphinxbase\util\strfuncs.c" />

@@ -9,7 +9,7 @@ using System.Resources;
 [assembly: AssemblyTitle("PocketSphinxWindowsPhoneDemo")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
+[assembly: AssemblyCompany("Enbyin")]
 [assembly: AssemblyProduct("PocketSphinxWindowsPhoneDemo")]
 [assembly: AssemblyCopyright("Copyright ©  2014")]
 [assembly: AssemblyTrademark("")]

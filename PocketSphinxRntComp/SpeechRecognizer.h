@@ -1,5 +1,12 @@
 ﻿#pragma once
 
+/**
+* Created by Toine de Boer, Enbyin (NL)
+* 
+* Intended as kick-start using PocketSphinx on Windows mobile platforms
+* Methods are listed in order of usage
+*/
+
 namespace PocketSphinxRntComp
 {
 	public delegate void ResultFoundHandler(Platform::String^ result);
@@ -14,17 +21,21 @@ namespace PocketSphinxRntComp
 		Platform::String^ AddGrammarSearch(Platform::String^ name, Platform::String^ filePath);
 		Platform::String^ AddNgramSearch(Platform::String^ name, Platform::String^ filePath);
 		Platform::String^ SetSearch(Platform::String^ name);
+
 		Platform::String^ StartProcessing(void);
 		Platform::String^ StopProcessing(void);
 		Platform::String^ RestartProcessing(void);
+		Platform::Boolean IsProcessing(void);
 
-		Platform::String^ TestPocketSphinx(void);
-		Platform::String^ CleanPocketSphinx(void);
-
-		int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioBytes);
+		int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioBytes);	
 				
 		event ResultFoundHandler^ resultFound;
 		event ResultFoundHandler^ resultFinalizedBySilence;
+				
+		Platform::String^ CleanPocketSphinx(void);
+
+		// Test method (to use a raw recorded audio file)
+		Platform::String^ TestPocketSphinx(void);
 
 	private:
 		void SpeechRecognizer::OnResultFound(Platform::String^ result);

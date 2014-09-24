@@ -15,6 +15,12 @@ using System.Threading.Tasks;
 
 namespace PocketSphinxWindowsPhoneDemo
 {
+    /// <summary>
+    /// PocketSphinx implementation for Windows Phone
+    /// pure code; no MVVM and all in 1 code behind file
+    /// 
+    /// Created by Toine de Boer, Enbyin (NL)
+    /// </summary>
     public partial class MainPage : PhoneApplicationPage
     {
 
@@ -75,7 +81,7 @@ namespace PocketSphinxWindowsPhoneDemo
             InitializeAudioRecorder();
 
             // Start processes
-            StartSpeechRecognizerProccesing();
+            StartSpeechRecognizerProcessing();
             StartNativeRecorder();
 
             // UI            
@@ -196,13 +202,20 @@ namespace PocketSphinxWindowsPhoneDemo
             }
         }
 
-        private void StartSpeechRecognizerProccesing()
+        private void StartSpeechRecognizerProcessing()
         {
             string result = string.Empty;
 
             try
             {
-                result = speechRecognizer.StartProcessing();
+                if(speechRecognizer.IsProcessing())
+                {
+                    result = "PocketSphinx already started";
+                }
+                else
+                {
+                    result = speechRecognizer.StartProcessing();
+                }                
             }
             catch
             {
@@ -212,7 +225,7 @@ namespace PocketSphinxWindowsPhoneDemo
             Debug.WriteLine(result);
         }
 
-        private void StopSpeechRecognizerProccesing()
+        private void StopSpeechRecognizerProcessing()
         {
             string result = string.Empty;
 
@@ -274,7 +287,7 @@ namespace PocketSphinxWindowsPhoneDemo
             {
                 Debug.WriteLine(ex.Message);
                 StopNativeRecorder();
-                StopSpeechRecognizerProccesing();
+                StopSpeechRecognizerProcessing();
                 StateMessageBlock.Text = "all stoped because of error";
             }
 

@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Deployment xmlns="http://schemas.microsoft.com/windowsphone/2012/deployment" AppPlatformVersion="8.0">
   <DefaultLanguage xmlns="" code="en-US" />
-  <App xmlns="" ProductID="{425d4ab7-2bf9-4afb-99fa-928db479d4a2}" Title="PocketSphinxWindowsPhoneDemo" RuntimeType="Silverlight" Version="1.0.0.0" Genre="apps.normal" Author="PocketSphinxWindowsPhoneDemo author" Description="Sample description" Publisher="PocketSphinxWindowsPhoneDemo" PublisherID="{1a38bbcb-c8d1-492c-a769-5d3d2582b090}">
+  <App xmlns="" ProductID="{425d4ab7-2bf9-4afb-99fa-928db479d4a2}" Title="PocketSphinxWindowsPhoneDemo" RuntimeType="Silverlight" Version="1.0.0.0" Genre="apps.normal" Author="Toine de Boer" Description="PocketSphinx demo for Windows Phones" Publisher="Enbyin" PublisherID="{1a38bbcb-c8d1-492c-a769-5d3d2582b090}">
     <IconPath IsRelative="true" IsResource="false">Assets\ApplicationIcon.png</IconPath>
     <Capabilities>
       <Capability Name="ID_CAP_NETWORKING" />

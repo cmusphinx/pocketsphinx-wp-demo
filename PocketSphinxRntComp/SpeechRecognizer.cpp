@@ -1,4 +1,9 @@
-﻿// SpeechRecognizer.cpp
+﻿/**
+* Created by Toine de Boer, Enbyin (NL)
+*
+* intended as kick-start using PocketSphinx on Windows mobile platforms
+*/
+
 #include "SpeechRecognizer.h"
 
 using namespace PocketSphinxRntComp;
@@ -12,6 +17,8 @@ using namespace Platform;
 
 // using pocketsphinx demo: http://cmusphinx.sourceforge.net/wiki/tutorialpocketsphinx
 // api pocketsphinx: http://cmusphinx.sourceforge.net/doc/pocketsphinx/
+
+/// a litle part from the Android version:
 
 //private static final String KWS_SEARCH = "wakeup";
 //private static final String FORECAST_SEARCH = "forecast";
@@ -36,6 +43,8 @@ bool isInitialized = false;
 
 bool isPreviousInSpeech = false;
 
+bool isProcessing = false;
+
 Platform::String^ previousHyp = "";
 
 ps_decoder_t *ps;
@@ -56,7 +65,7 @@ SpeechRecognizer::SpeechRecognizer()
 
 #pragma endregion
 
-#pragma region Static Methods / Helpers
+#pragma region Static Helpers
 
 static char* concat(char *s1, char *s2)
 {
@@ -193,44 +202,55 @@ Platform::String^ SpeechRecognizer::AddNgramSearch(Platform::String^ name, Platf
 		Platform::String::Concat("fault adding Ngram search: ", name);
 }
 
-/// Start PocketSphinx proccesing (utt)
+/// Start PocketSphinx processing (utt)
 Platform::String^ SpeechRecognizer::StartProcessing(void)
 {
 	auto result = ps_start_utt(ps, NULL);
+
+	isProcessing = (result == 0);
 
 	return (result == 0) ?
 		"PocketShinx ready for processing" :
 		"Error starting PocketShinx processing";
 }
 
-/// Stop PocketSphinx proccesing (utt)
+/// Stop PocketSphinx processing (utt)
 Platform::String^ SpeechRecognizer::StopProcessing(void)
 {
 	auto result = ps_end_utt(ps);
 	isPreviousInSpeech = false;
 	previousHyp = "";
+	isProcessing = false;
 
 	return (result == 0) ?
 		"PocketShinx stopped processing" :
 		"Error stopping PocketShinx processing";
 }
 
+/// Stop en Start PocketSphinx processing
 Platform::String^ SpeechRecognizer::RestartProcessing(void)
 {
 	auto resultEnding = ps_end_utt(ps);
+	isProcessing = false;
 	previousHyp = "";
 	auto resultStarting = ps_start_utt(ps, NULL);
+	isProcessing = (resultStarting == 0);
 
 	return ((resultEnding + resultStarting) == 0 && (resultEnding - resultStarting) == 0) ?
 		"PocketShinx restarted processing" :
 		"Error restarting PocketShinx processing";
 }
 
+Platform::Boolean SpeechRecognizer::IsProcessing(void)
+{
+	return isProcessing;
+}
+
 /// Register Audio Bytes -> 
 /// 
 int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioBytes)
 {
-	// source: http://blog.csdn.net/zouxy09/article/details/7978108
+	// litle info @ http://blog.csdn.net/zouxy09/article/details/7978108
 
 	int const buffSize = 16384;
 	int16 audioBuffer[buffSize];

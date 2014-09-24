@@ -58,11 +58,12 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
-      <PreprocessorDefinitions>_WINRT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PreprocessorDefinitions>HAVE_CONFIG_H;_WIN32;_WIN32_WP;_CRT_SECURE_NO_WARNINGS;_WINRT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalUsingDirectories>$(WindowsSDK_MetadataPath);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
-      <CompileAsWinRT>true</CompileAsWinRT>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <AdditionalIncludeDirectories>$(ProjectDir)/include;$(ProjectDir)/include/win32;$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -73,11 +74,12 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <PreprocessorDefinitions>_WINRT_DLL;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PreprocessorDefinitions>HAVE_CONFIG_H;_WIN32;_WIN32_WP;_CRT_SECURE_NO_WARNINGS;_WINRT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalUsingDirectories>$(WindowsSDK_MetadataPath);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
-      <CompileAsWinRT>true</CompileAsWinRT>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <AdditionalIncludeDirectories>$(ProjectDir)/include;$(ProjectDir)/include/win32;$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -104,11 +106,12 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
     <ClCompile>
-      <PreprocessorDefinitions>_WINRT_DLL;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PreprocessorDefinitions>HAVE_CONFIG_H;_WIN32;_WIN32_WP;_CRT_SECURE_NO_WARNINGS;_WINRT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalUsingDirectories>$(WindowsSDK_MetadataPath);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
-      <CompileAsWinRT>true</CompileAsWinRT>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <AdditionalIncludeDirectories>$(ProjectDir)/include;$(ProjectDir)/include/win32;$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -294,7 +297,6 @@
     <ClCompile Include="libsphinxbase\util\mmio.c" />
     <ClCompile Include="libsphinxbase\util\pio.c" />
     <ClCompile Include="libsphinxbase\util\profile.c" />
-    <ClCompile Include="libsphinxbase\util\sbthread.c" />
     <ClCompile Include="libsphinxbase\util\slamch.c" />
     <ClCompile Include="libsphinxbase\util\slapack_lite.c" />
     <ClCompile Include="libsphinxbase\util\strfuncs.c" />
@@ -302,6 +304,9 @@
     <!--<ClCompile Include="PocketSphinxRntComp.cpp" />-->
     <ClCompile Include="SpeechRecognizer.cpp">
       <CompileAsWinRT Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">true</CompileAsWinRT>
+      <CompileAsWinRT Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</CompileAsWinRT>
+      <CompileAsWinRT Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">true</CompileAsWinRT>
+      <CompileAsWinRT Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</CompileAsWinRT>
     </ClCompile>
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
