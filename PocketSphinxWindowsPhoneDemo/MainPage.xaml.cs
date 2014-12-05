@@ -175,8 +175,7 @@ namespace PocketSphinxWindowsPhoneDemo
                 // Load Async
                 await Task.Run(() =>
                 {
-                    var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us-semi",
-                        "\\Assets\\models\\lm\\weather.dmp", "\\Assets\\models\\dict\\cmu07a.dic");
+                    var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us-semi", "", "\\Assets\\models\\dict\\cmu07a.dic");
                     initResults.Add(initResult);
                     initResult = speechRecognizer.AddKeyphraseSearch(RecognizerMode.Wakeup.ToString(), WakeupText);
                     initResults.Add(initResult);

@@ -102,7 +102,10 @@ String^ convertCharsToString(const char* chars)
 #pragma region Public Methods
 
 //// Initialize decoder with default models
-Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFilePath, Platform::String^ lmFilePath, Platform::String^ dictFilePath)
+/// hmmFolderPath	== the acoustic model folder (content folder: http://cmusphinx.sourceforge.net/wiki/tutorialam#using_the_model)
+/// lmFilePath		== the language model file
+/// dictFilePath	== the dictionary file
+Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, Platform::String^ lmFilePath, Platform::String^ dictFilePath)
 {
 	if (isInitialized)
 	{
@@ -120,7 +123,7 @@ Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFilePath, Pl
 	char *logPath = concat(localStorageFolder, "\\errors.log");
 	//err_set_logfile(logPath);
 
-	char *hmmPath = concat(installedFolderPath, convertStringToChars(hmmFilePath));
+	char *hmmPath = concat(installedFolderPath, convertStringToChars(hmmFolderPath));
 	char *lmPath = concat(installedFolderPath, convertStringToChars(lmFilePath));
 	char *dictPath = concat(installedFolderPath, convertStringToChars(dictFilePath));
 
@@ -157,7 +160,7 @@ Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFilePath, Pl
 	return "PocketSphinx initialization done";
 }
 
-//// Create keyword-activation search
+//// Add keyword-activation search
 Platform::String^ SpeechRecognizer::AddKeyphraseSearch(Platform::String^ name, Platform::String^ keyphrase)
 {
 	char *Cname = convertStringToChars(name);
@@ -170,7 +173,7 @@ Platform::String^ SpeechRecognizer::AddKeyphraseSearch(Platform::String^ name, P
 		Platform::String::Concat("fault adding keyphrase search: ", name);
 }
 
-//// Create grammar-based searches
+//// Add grammar-based searches (like *.gram files)
 Platform::String^ SpeechRecognizer::AddGrammarSearch(Platform::String^ name, Platform::String^ filePath)
 {
 	char *Cname = convertStringToChars(name);
@@ -188,7 +191,7 @@ Platform::String^ SpeechRecognizer::AddGrammarSearch(Platform::String^ name, Pla
 
 }
 
-//// Create language model search
+//// Add language model search (like *.dmp files)
 Platform::String^ SpeechRecognizer::AddNgramSearch(Platform::String^ name, Platform::String^ filePath)
 {
 	char *Cname = convertStringToChars(name);
@@ -217,7 +220,11 @@ Platform::String^ SpeechRecognizer::StartProcessing(void)
 /// Stop PocketSphinx processing (utt)
 Platform::String^ SpeechRecognizer::StopProcessing(void)
 {
-	auto result = ps_end_utt(ps);
+	int result = -1;
+	if (isProcessing)
+	{
+		result = ps_end_utt(ps);
+	}
 	isPreviousInSpeech = false;
 	previousHyp = "";
 	isProcessing = false;
