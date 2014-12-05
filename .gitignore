@@ -1,2 +1,11 @@
 PocketSphinxWindowsPhoneDemo.opensdf
 PocketSphinxWindowsPhoneDemo.sdf
+PocketSphinxWindowsPhoneDemo/Bin/
+PocketSphinxWindowsPhoneDemo/obj/
+PocketSphinxRntComp/Debug/
+WasapiAudioComp/Debug/
+ipch/
+Debug/PocketSphinxRntComp/PocketSphinxRntComp.exp
+Debug/PocketSphinxRntComp/PocketSphinxRntComp.winmd
+Debug/WasapiAudioComp/WasapiAudioComp.exp
+Debug/WasapiAudioComp/WasapiAudioComp.winmd
