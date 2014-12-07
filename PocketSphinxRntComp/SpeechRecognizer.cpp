@@ -40,6 +40,7 @@ using namespace Platform;
 #pragma region Private Fields
 
 bool isInitialized = false;
+bool hasSearchBeenSet = false;
 
 bool isPreviousInSpeech = false;
 
@@ -99,13 +100,12 @@ String^ convertCharsToString(const char* chars)
 
 #pragma endregion
 
-#pragma region Public Methods
+#pragma region Initialize and Load Methods
 
 //// Initialize decoder with default models
 /// hmmFolderPath	== the acoustic model folder (content folder: http://cmusphinx.sourceforge.net/wiki/tutorialam#using_the_model)
-/// lmFilePath		== the language model file
 /// dictFilePath	== the dictionary file
-Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, Platform::String^ lmFilePath, Platform::String^ dictFilePath)
+Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, Platform::String^ dictFilePath)
 {
 	if (isInitialized)
 	{
@@ -124,30 +124,15 @@ Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, 
 	//err_set_logfile(logPath);
 
 	char *hmmPath = concat(installedFolderPath, convertStringToChars(hmmFolderPath));
-	char *lmPath = concat(installedFolderPath, convertStringToChars(lmFilePath));
 	char *dictPath = concat(installedFolderPath, convertStringToChars(dictFilePath));
 
-	if (lmFilePath->Length() > 0)
-	{
-		config = cmd_ln_init(NULL, ps_args(), TRUE,
-			"-hmm", hmmPath,
-			"-lm", lmPath,
-			"-dict", dictPath,
-			"-mmap", "no",
-			"-logfn", logPath,
-			"-kws_threshold", "1e-40",
-			NULL);
-	}
-	else
-	{
-		config = cmd_ln_init(NULL, ps_args(), TRUE,
-			"-hmm", hmmPath,
-			"-dict", dictPath,
-			"-mmap", "no",
-			"-logfn", logPath,
-			"-kws_threshold", "1e-40",
-			NULL);
-	}
+	config = cmd_ln_init(NULL, ps_args(), TRUE,
+		"-hmm", hmmPath,
+		"-dict", dictPath,
+		"-mmap", "no",
+		"-logfn", logPath,
+		"-kws_threshold", "1e-40",
+		NULL);
 
 	if (config == NULL)
 		return "No config";
@@ -173,7 +158,7 @@ Platform::String^ SpeechRecognizer::AddKeyphraseSearch(Platform::String^ name, P
 		Platform::String::Concat("fault adding keyphrase search: ", name);
 }
 
-//// Add grammar-based searches (like *.gram files)
+//// Add grammar-based searches (like .jsgf or .gram files)
 Platform::String^ SpeechRecognizer::AddGrammarSearch(Platform::String^ name, Platform::String^ filePath)
 {
 	char *Cname = convertStringToChars(name);
@@ -185,10 +170,9 @@ Platform::String^ SpeechRecognizer::AddGrammarSearch(Platform::String^ name, Pla
 	int result = ps_set_jsgf_file(ps, Cname, CcompleteFilePath);
 
 	// 0 == OK, 1 == fault
-	return (result == 0) ?
-		Platform::String::Concat(name, " grammar search added") :
+	return (result == 0)? 
+		Platform::String::Concat(name, " grammar search added"):
 		Platform::String::Concat("fault adding grammar search: ", name);
-
 }
 
 //// Add language model search (like *.dmp files)
@@ -200,14 +184,24 @@ Platform::String^ SpeechRecognizer::AddNgramSearch(Platform::String^ name, Platf
 
 	int result = ps_set_lm_file(ps, Cname, CcompleteFilePath);
 
-	return (result == 0) ?
-		Platform::String::Concat(name, " Ngram search added") :
+	return (result == 0) ? 
+		Platform::String::Concat(name, " Ngram search added"):
 		Platform::String::Concat("fault adding Ngram search: ", name);
 }
+
+#pragma endregion
+
+#pragma region Operation methods
 
 /// Start PocketSphinx processing (utt)
 Platform::String^ SpeechRecognizer::StartProcessing(void)
 {
+	Platform::String^ message;
+	if (!IsReadyForProcessing(message))
+	{
+		return message;
+	}
+
 	auto result = ps_start_utt(ps, NULL);
 
 	isProcessing = (result == 0);
@@ -220,6 +214,12 @@ Platform::String^ SpeechRecognizer::StartProcessing(void)
 /// Stop PocketSphinx processing (utt)
 Platform::String^ SpeechRecognizer::StopProcessing(void)
 {
+	Platform::String^ message;
+	if (!IsReadyForProcessing(message))
+	{
+		return message;
+	}
+
 	int result = -1;
 	if (isProcessing)
 	{
@@ -237,6 +237,12 @@ Platform::String^ SpeechRecognizer::StopProcessing(void)
 /// Stop en Start PocketSphinx processing
 Platform::String^ SpeechRecognizer::RestartProcessing(void)
 {
+	Platform::String^ message;
+	if (!IsReadyForProcessing(message))
+	{
+		return message;
+	}
+
 	auto resultEnding = ps_end_utt(ps);
 	isProcessing = false;
 	previousHyp = "";
@@ -257,6 +263,12 @@ Platform::Boolean SpeechRecognizer::IsProcessing(void)
 /// 
 int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioBytes)
 {
+	Platform::String^ message;
+	if (!IsReadyForProcessing(message))
+	{
+		return -1;
+	}
+
 	// litle info @ http://blog.csdn.net/zouxy09/article/details/7978108
 
 	int const buffSize = 16384;
@@ -333,9 +345,15 @@ Platform::String^ SpeechRecognizer::SetSearch(Platform::String^ name)
 
 	int result = ps_set_search(ps, Cname);
 
-	return (result == 0) ?
-		Platform::String::Concat("Search set to: ", name) :
-		Platform::String::Concat("fault setting search to: ", name);
+	if (result == 0)
+	{
+		hasSearchBeenSet = true;
+		return Platform::String::Concat("Search set to: ", name);
+	}
+	else
+	{
+		return Platform::String::Concat("fault setting search to: ", name);
+	}
 }
 
 //// Cleanup PocketSphinx resources
@@ -350,6 +368,23 @@ Platform::String^ SpeechRecognizer::CleanPocketSphinx(void)
 	isInitialized = false;
 
 	return "PocketSphinx resources cleaned";
+}
+
+Platform::Boolean SpeechRecognizer::IsReadyForProcessing(Platform::String^& message)
+{
+	if (!isInitialized)
+	{
+		message = "PocketSphinx is not initialized";
+		return false;
+	}
+	
+	if (!hasSearchBeenSet)
+	{
+		message = "PocketSphinx has not loaded a search model or the search hasn't been set";
+		return false;
+	}
+
+	return true;
 }
 
 #pragma region Test Methods

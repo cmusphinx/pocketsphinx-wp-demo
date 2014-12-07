@@ -175,7 +175,7 @@ namespace PocketSphinxWindowsPhoneDemo
                 // Load Async
                 await Task.Run(() =>
                 {
-                    var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us-semi", "", "\\Assets\\models\\dict\\cmu07a.dic");
+                    var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us-semi", "\\Assets\\models\\dict\\cmu07a.dic");
                     initResults.Add(initResult);
                     initResult = speechRecognizer.AddKeyphraseSearch(RecognizerMode.Wakeup.ToString(), WakeupText);
                     initResults.Add(initResult);
@@ -183,8 +183,8 @@ namespace PocketSphinxWindowsPhoneDemo
                     initResults.Add(initResult);
                     initResult = speechRecognizer.AddGrammarSearch(RecognizerMode.Digits.ToString(), "\\Assets\\models\\grammar\\digits.gram");
                     initResults.Add(initResult);
-                    //initResult = speechRecognizer.AddNgramSearch("forecast", "\\Assets\\models\\lm\\weather.dmp");
-                    //initResults.Add(initResult);
+                    initResult = speechRecognizer.AddNgramSearch("forecast", "\\Assets\\models\\lm\\weather.dmp");
+                    initResults.Add(initResult);
                 });
 
                 SetRecognizerMode(Mode);
