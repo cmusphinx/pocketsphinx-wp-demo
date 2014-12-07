@@ -19,8 +19,10 @@ This demo created by Toine de Boer, Enbyin (NL)
 
 
 HOW TO:
+
 WasapiAudioComp == Microphone recorder (Wasapi)
 - not HOW TO needed
+
 SpeechRecognizer == PocketSphinx implementation
 - STEP 1: initialize and load (initialize Model and Dictionary, and at least 1 search)
 - STEP 2: set search (activate search by name)
