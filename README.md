@@ -11,17 +11,13 @@ This demo is hosted at
 
 http://github.com/cmusphinx/pocketsphinx-wp-demo
 
-However, there is also a codeplex community here:
-
-https://windowsphonepocketsphinx.codeplex.com
-
 This demo created by Toine de Boer, Enbyin (NL)
 
 
-HOW TO:
+HOW IT WORKS: (just build and the demo should work fine)
 
-WasapiAudioComp == Microphone recorder (Wasapi)
-- not HOW TO needed
+WasapiAudio == Microphone recorder (Wasapi)
+- no HOW TO needed
 
 SpeechRecognizer == PocketSphinx implementation
 - STEP 1: initialize and load (initialize Model and Dictionary, and at least 1 search)
