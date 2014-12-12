@@ -14,6 +14,8 @@ http://github.com/cmusphinx/pocketsphinx-wp-demo
 This demo created by Toine de Boer, Enbyin (NL)
 
 
+---------------------------------------------------------------------------------------
+
 HOW IT WORKS: (just build and the demo should work fine)
 
 WasapiAudio == Microphone recorder (Wasapi)
