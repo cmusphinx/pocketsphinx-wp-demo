@@ -226,10 +226,6 @@
       <Project>{005bf7bf-48f1-4291-86a0-380d2694fd1b}</Project>
       <Name>PocketSphinxRntComp</Name>
     </ProjectReference>
-    <ProjectReference Include="..\WasapiAudioComp\WasapiAudioComp.vcxproj">
-      <Project>{18887186-0d7b-4441-b224-cadac3b59ca9}</Project>
-      <Name>WasapiAudioComp</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\Microsoft\$(TargetFrameworkIdentifier)\$(TargetFrameworkVersion)\Microsoft.$(TargetFrameworkIdentifier).$(TargetFrameworkVersion).Overrides.targets" />
   <Import Project="$(MSBuildExtensionsPath)\Microsoft\$(TargetFrameworkIdentifier)\$(TargetFrameworkVersion)\Microsoft.$(TargetFrameworkIdentifier).CSharp.targets" />

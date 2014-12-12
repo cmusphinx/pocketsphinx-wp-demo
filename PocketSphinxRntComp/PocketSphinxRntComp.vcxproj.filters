@@ -89,6 +89,8 @@
     <ClCompile Include="libpocketsphinx\tmat.c" />
     <ClCompile Include="libpocketsphinx\vector.c" />
     <ClCompile Include="SpeechRecognizer.cpp" />
+    <ClCompile Include="Output.cpp" />
+    <ClCompile Include="WasapiAudio.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -183,5 +185,7 @@
     <ClInclude Include="include\ps_mllr.h" />
     <ClInclude Include="include\ps_search.h" />
     <ClInclude Include="SpeechRecognizer.h" />
+    <ClInclude Include="WasapiAudio.h" />
+    <ClInclude Include="Output.h" />
   </ItemGroup>
 </Project>
