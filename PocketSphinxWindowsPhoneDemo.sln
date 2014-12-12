@@ -1,13 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.30501.0
+VisualStudioVersion = 12.0.30723.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PocketSphinxWindowsPhoneDemo", "PocketSphinxWindowsPhoneDemo\PocketSphinxWindowsPhoneDemo.csproj", "{425D4AB7-2BF9-4AFB-99FA-928DB479D4A2}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PocketSphinxRntComp", "PocketSphinxRntComp\PocketSphinxRntComp.vcxproj", "{005BF7BF-48F1-4291-86A0-380D2694FD1B}"
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WasapiAudioComp", "WasapiAudioComp\WasapiAudioComp.vcxproj", "{18887186-0D7B-4441-B224-CADAC3B59CA9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -71,24 +69,6 @@ Global
 		{005BF7BF-48F1-4291-86A0-380D2694FD1B}.Release|Win32.Build.0 = Release|Win32
 		{005BF7BF-48F1-4291-86A0-380D2694FD1B}.Release|x86.ActiveCfg = Release|Win32
 		{005BF7BF-48F1-4291-86A0-380D2694FD1B}.Release|x86.Build.0 = Release|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|Any CPU.ActiveCfg = Debug|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|ARM.ActiveCfg = Debug|ARM
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|ARM.Build.0 = Debug|ARM
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|Mixed Platforms.Build.0 = Debug|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|Win32.ActiveCfg = Debug|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|Win32.Build.0 = Debug|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|x86.ActiveCfg = Debug|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Debug|x86.Build.0 = Debug|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|Any CPU.ActiveCfg = Release|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|ARM.ActiveCfg = Release|ARM
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|ARM.Build.0 = Release|ARM
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|Mixed Platforms.ActiveCfg = Release|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|Mixed Platforms.Build.0 = Release|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|Win32.ActiveCfg = Release|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|Win32.Build.0 = Release|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|x86.ActiveCfg = Release|Win32
-		{18887186-0D7B-4441-B224-CADAC3B59CA9}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
