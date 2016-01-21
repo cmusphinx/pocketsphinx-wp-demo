@@ -39,7 +39,9 @@
  * @brief Somewhat antiquated logging and error interface.
  */
 
-#include "config.h"
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,11 +78,6 @@ static err_cb_f err_cb = err_wince_cb;
 static err_cb_f err_cb = err_logfp_cb;
 #endif
 static void* err_user_data;
-
-void flushToFile()
-{
-	fflush(stderr);
-}
 
 void
 err_msg(err_lvl_t lvl, const char *path, long ln, const char *fmt, ...)
@@ -189,8 +186,6 @@ err_msg_system(err_lvl_t lvl, const char *path, long ln, const char *fmt, ...)
     } else {
         err_cb(err_user_data, lvl, "%s: %s\n", msg, strerror(local_errno));
     }
-
-	
 }
 #endif
 
@@ -239,8 +234,6 @@ err_logfp_cb(void *user_data, err_lvl_t lvl, const char *fmt, ...)
     va_start(ap, fmt);
     vfprintf(fp, fmt, ap);
     va_end(ap);
-
-	fflush(fp);
 }
 #endif
 
