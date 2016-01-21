@@ -61,10 +61,9 @@ static int ngram_search_finish(ps_search_t *search);
 static int ngram_search_reinit(ps_search_t *search, dict_t *dict, dict2pid_t *d2p);
 static char const *ngram_search_hyp(ps_search_t *search, int32 *out_score, int32 *out_is_final);
 static int32 ngram_search_prob(ps_search_t *search);
-static ps_seg_t *ngram_search_seg_iter(ps_search_t *search, int32 *out_score);
+static ps_seg_t *ngram_search_seg_iter(ps_search_t *search);
 
 static ps_searchfuncs_t ngram_funcs = {
-    /* name: */   "ngram",
     /* start: */  ngram_search_start,
     /* step: */   ngram_search_step,
     /* finish: */ ngram_search_finish,
@@ -138,7 +137,8 @@ ngram_search_calc_beams(ngram_search_t *ngs)
 }
 
 ps_search_t *
-ngram_search_init(ngram_model_t *lm,
+ngram_search_init(const char *name,
+                  ngram_model_t *lm,
                   cmd_ln_t *config,
                   acmod_t *acmod,
                   dict_t *dict,
@@ -153,7 +153,8 @@ ngram_search_init(ngram_model_t *lm,
                           cmd_ln_boolean_r(config, "-fwdtree"));
 
     ngs = ckd_calloc(1, sizeof(*ngs));
-    ps_search_init(&ngs->base, &ngram_funcs, config, acmod, dict, d2p);
+    ps_search_init(&ngs->base, &ngram_funcs, PS_SEARCH_TYPE_NGRAM, name, config, acmod, dict, d2p);
+
     ngs->hmmctx = hmm_context_init(bin_mdef_n_emit_state(acmod->mdef),
                                    acmod->tmat->tp, NULL, acmod->mdef->sseq);
     if (ngs->hmmctx == NULL) {
@@ -288,8 +289,7 @@ void
 ngram_search_free(ps_search_t *search)
 {
     ngram_search_t *ngs = (ngram_search_t *)search;
-
-    ps_search_deinit(search);
+    
     if (ngs->fwdtree)
         ngram_fwdtree_deinit(ngs);
     if (ngs->fwdflat)
@@ -306,6 +306,7 @@ ngram_search_free(ps_search_t *search)
                ngs->bestpath_perf.t_tot_elapsed / n_speech);
     }
 
+    ps_search_base_free(search);
     hmm_context_free(ngs->hmmctx);
     listelem_alloc_free(ngs->chan_alloc);
     listelem_alloc_free(ngs->root_chan_alloc);
@@ -1002,7 +1003,7 @@ ngram_search_bp_iter(ngram_search_t *ngs, int bpidx, float32 lwf)
 }
 
 static ps_seg_t *
-ngram_search_seg_iter(ps_search_t *search, int32 *out_score)
+ngram_search_seg_iter(ps_search_t *search)
 {
     ngram_search_t *ngs = (ngram_search_t *)search;
 
@@ -1017,7 +1018,7 @@ ngram_search_seg_iter(ps_search_t *search, int32 *out_score)
         ptmr_start(&ngs->bestpath_perf);
         if ((dag = ngram_search_lattice(search)) == NULL)
             return NULL;
-        if ((link = ngram_search_bestpath(search, out_score, TRUE)) == NULL)
+        if ((link = ngram_search_bestpath(search, NULL, TRUE)) == NULL)
             return NULL;
         itor = ps_lattice_seg_iter(dag, link,
                                    ngs->bestpath_fwdtree_lw_ratio);
@@ -1036,7 +1037,7 @@ ngram_search_seg_iter(ps_search_t *search, int32 *out_score)
         int32 bpidx;
 
         /* fwdtree and fwdflat use same backpointer table. */
-        bpidx = ngram_search_find_exit(ngs, -1, out_score, NULL);
+        bpidx = ngram_search_find_exit(ngs, -1, NULL, NULL);
         return ngram_search_bp_iter(ngs, bpidx,
                                     /* but different language weights... */
                                     (ngs->done && ngs->fwdflat)
@@ -1391,9 +1392,8 @@ ngram_search_lattice(ps_search_t *search)
     /* Free nodes unreachable from dag->end and their links */
     ps_lattice_delete_unreachable(dag);
 
-    /* Build links around silence and filler words, since they do not
-     * exist in the language model. */
-    ps_lattice_bypass_fillers(dag, ngs->silpen, ngs->fillpen);
+    /* Add silprob and fillprob to corresponding links */
+    ps_lattice_penalize_fillers(dag, ngs->silpen, ngs->fillpen);
 
     search->dag = dag;
     return dag;

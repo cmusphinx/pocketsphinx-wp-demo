@@ -202,7 +202,7 @@ Platform::String^ SpeechRecognizer::StartProcessing(void)
 		return message;
 	}
 
-	auto result = ps_start_utt(ps, NULL);
+	auto result = ps_start_utt(ps);
 
 	isProcessing = (result == 0);
 
@@ -246,7 +246,7 @@ Platform::String^ SpeechRecognizer::RestartProcessing(void)
 	auto resultEnding = ps_end_utt(ps);
 	isProcessing = false;
 	previousHyp = "";
-	auto resultStarting = ps_start_utt(ps, NULL);
+	auto resultStarting = ps_start_utt(ps);
 	isProcessing = (resultStarting == 0);
 
 	return ((resultEnding + resultStarting) == 0 && (resultEnding - resultStarting) == 0) ?
@@ -301,7 +301,7 @@ int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioByte
 	isCurrentInSpeech = ps_get_in_speech(ps);
 
 	// Get Hyp / Detection
-	hyp = ps_get_hyp(ps, &score, &uttid);
+	hyp = ps_get_hyp(ps, &score);
 	//hyp = ps_get_hyp_final(ps, &score);
 	if (hyp != NULL)
 	{
@@ -398,8 +398,8 @@ Platform::String^ SpeechRecognizer::TestPocketSphinx(void)
 		return "No file";
 	}
 
-	ps_decode_raw(ps, fh, "goforward", -1);
-	hyp = ps_get_hyp(ps, &score, NULL);
+	ps_decode_raw(ps, fh, -1);
+	hyp = ps_get_hyp(ps, &score);
 
 	mbstowcs(whyp, hyp, 1024);
 

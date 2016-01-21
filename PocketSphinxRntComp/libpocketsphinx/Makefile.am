@@ -2,7 +2,7 @@ ARCH   = `uname -m | sed s/i.86/i386/`_`uname -s | tr A-Z a-z`
 
 lib_LTLIBRARIES = libpocketsphinx.la
 
-libpocketsphinx_la_LDFLAGS = -version-info 2:0:1 -lm
+libpocketsphinx_la_LDFLAGS = -version-info 3:0:0 -lm
 
 libpocketsphinx_la_SOURCES =			\
 	acmod.c					\
@@ -68,7 +68,7 @@ noinst_HEADERS =				\
 	tmat.h					\
 	vector.h
 
-INCLUDES = \
+AM_CFLAGS =\
 	-I$(top_srcdir)/include \
 	-I$(top_builddir)/include \
 	-DMODELDIR=\"${prefix}/share/pocketsphinx/model\"

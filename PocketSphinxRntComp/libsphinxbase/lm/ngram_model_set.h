@@ -43,7 +43,6 @@
 #define __NGRAM_MODEL_SET_H__
 
 #include "ngram_model_internal.h"
-#include "lm3g_model.h"
 
 /**
  * Subclass of ngram_model for grouping language models.
@@ -68,4 +67,4 @@ struct ngram_model_set_iter_s {
     int32 cur;
 };
 
-#endif /* __NGRAM_MODEL_SET_H__ */
+#endif                          /* __NGRAM_MODEL_SET_H__ */
