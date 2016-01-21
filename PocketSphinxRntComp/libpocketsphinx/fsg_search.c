@@ -70,12 +70,11 @@
 #define __FSG_DBG__		0
 #define __FSG_DBG_CHAN__	0
 
-static ps_seg_t *fsg_search_seg_iter(ps_search_t *search, int32 *out_score);
+static ps_seg_t *fsg_search_seg_iter(ps_search_t *search);
 static ps_lattice_t *fsg_search_lattice(ps_search_t *search);
 static int fsg_search_prob(ps_search_t *search);
 
 static ps_searchfuncs_t fsg_funcs = {
-    /* name: */   "fsg",
     /* start: */  fsg_search_start,
     /* step: */   fsg_search_step,
     /* finish: */ fsg_search_finish,
@@ -176,14 +175,15 @@ fsg_search_add_altpron(fsg_search_t *fsgs, fsg_model_t *fsg)
 }
 
 ps_search_t *
-fsg_search_init(fsg_model_t *fsg,
+fsg_search_init(const char *name,
+		fsg_model_t *fsg,
                 cmd_ln_t *config,
                 acmod_t *acmod,
                 dict_t *dict,
                 dict2pid_t *d2p)
 {
     fsg_search_t *fsgs = ckd_calloc(1, sizeof(*fsgs));
-    ps_search_init(ps_search_base(fsgs), &fsg_funcs, config, acmod, dict, d2p);
+    ps_search_init(ps_search_base(fsgs), &fsg_funcs, PS_SEARCH_TYPE_FSG, name, config, acmod, dict, d2p);
 
     fsgs->fsg = fsg_model_retain(fsg);
     /* Initialize HMM context. */
@@ -255,7 +255,7 @@ fsg_search_free(ps_search_t *search)
 {
     fsg_search_t *fsgs = (fsg_search_t *)search;
 
-    ps_search_deinit(search);
+    ps_search_base_free(search);
     fsg_lextree_free(fsgs->lextree);
     if (fsgs->history) {
         fsg_history_reset(fsgs->history);
@@ -853,6 +853,9 @@ fsg_search_find_exit(fsg_search_t *fsgs, int frame_idx, int final, int32 *out_sc
     int bpidx, frm, last_frm, besthist;
     int32 bestscore;
 
+    if (out_is_final)
+	*out_is_final = FALSE;
+
     if (frame_idx == -1)
         frame_idx = fsgs->frame - 1;
     last_frm = frm = frame_idx;
@@ -869,7 +872,7 @@ fsg_search_find_exit(fsg_search_t *fsgs, int frame_idx, int final, int32 *out_sc
     }
 
     /* No hypothesis (yet). */
-    if (bpidx <= 0) 
+    if (bpidx <= 0)
         return bpidx;
 
     /* Now find best word exit in this frame. */
@@ -956,8 +959,9 @@ fsg_search_hyp(ps_search_t *search, int32 *out_score, int32 *out_is_final)
     /* Get last backpointer table index. */
     bpidx = fsg_search_find_exit(fsgs, fsgs->frame, fsgs->final, out_score, out_is_final);
     /* No hypothesis (yet). */
-    if (bpidx <= 0)
+    if (bpidx <= 0) {
         return NULL;
+    }
 
     /* If bestpath is enabled and the utterance is complete, then run it. */
     if (fsgs->bestpath && fsgs->final) {
@@ -1082,13 +1086,14 @@ static ps_segfuncs_t fsg_segfuncs = {
 };
 
 static ps_seg_t *
-fsg_search_seg_iter(ps_search_t *search, int32 *out_score)
+fsg_search_seg_iter(ps_search_t *search)
 {
     fsg_search_t *fsgs = (fsg_search_t *)search;
     fsg_seg_t *itor;
+    int32 out_score;
     int bp, bpidx, cur;
 
-    bpidx = fsg_search_find_exit(fsgs, fsgs->frame, fsgs->final, out_score, NULL);
+    bpidx = fsg_search_find_exit(fsgs, fsgs->frame, fsgs->final, &out_score, NULL);
     /* No hypothesis (yet). */
     if (bpidx <= 0)
         return NULL;
@@ -1100,7 +1105,7 @@ fsg_search_seg_iter(ps_search_t *search, int32 *out_score)
 
         if ((dag = fsg_search_lattice(search)) == NULL)
             return NULL;
-        if ((link = fsg_search_bestpath(search, out_score, TRUE)) == NULL)
+        if ((link = fsg_search_bestpath(search, &out_score, TRUE)) == NULL)
             return NULL;
         return ps_lattice_seg_iter(dag, link, 1.0);
     }
@@ -1517,7 +1522,8 @@ fsg_search_lattice(ps_search_t *search)
                                       cmd_ln_float32_r(ps_search_config(fsgs), "-fillprob"))
                           * fsg->lw)
             >> SENSCR_SHIFT;
-        ps_lattice_bypass_fillers(dag, silpen, fillpen);
+	
+	ps_lattice_penalize_fillers(dag, silpen, fillpen);
     }
     search->dag = dag;
 

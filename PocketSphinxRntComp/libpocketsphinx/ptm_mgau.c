@@ -177,7 +177,7 @@ eval_cb(ptm_mgau_t *s, int cb, int feat, mfcc_t *z)
         d = *detP;
         thresh = (mfcc_t) worst->score; /* Avoid int-to-float conversions */
         obs = z;
-        cw = detP - det;
+        cw = (int)(detP - det);
 
         /* Unroll the loop starting with the first dimension(s).  In
          * theory this might be a bit faster if this Gaussian gets
@@ -250,24 +250,32 @@ ptm_mgau_codebook_eval(ptm_mgau_t *s, mfcc_t **z, int frame)
             eval_cb(s, i, j, z[j]);
         }
     }
+    return 0;
+}
 
-    /* Normalize densities to produce "posterior probabilities",
-     * i.e. things with a reasonable dynamic range, then scale and
-     * clamp them to the acceptable range.  This is actually done
-     * solely to ensure that we can use fast_logmath_add().  Note that
-     * unless we share the same normalizer across all codebooks for
-     * each feature stream we get defective scores (that's why these
-     * loops are inside out - doing it per-feature should give us
-     * greater precision). */
+/**
+ * Normalize densities to produce "posterior probabilities",
+ * i.e. things with a reasonable dynamic range, then scale and
+ * clamp them to the acceptable range.  This is actually done
+ * solely to ensure that we can use fast_logmath_add().  Note that
+ * unless we share the same normalizer across all codebooks for
+ * each feature stream we get defective scores (that's why these
+ * loops are inside out - doing it per-feature should give us
+ * greater precision). */
+static int
+ptm_mgau_codebook_norm(ptm_mgau_t *s, mfcc_t **z, int frame)
+{
+    int i, j;
+
     for (j = 0; j < s->g->n_feat; ++j) {
-        int32 norm = 0x7fffffff;
+        int32 norm = WORST_SCORE;
         for (i = 0; i < s->g->n_mgau; ++i) {
             if (bitvec_is_clear(s->f->mgau_active, i))
                 continue;
-            if (norm > s->f->topn[i][j][0].score >> SENSCR_SHIFT)
+            if (norm < s->f->topn[i][j][0].score >> SENSCR_SHIFT)
                 norm = s->f->topn[i][j][0].score >> SENSCR_SHIFT;
         }
-        assert(norm != 0x7fffffff);
+        assert(norm != WORST_SCORE);
         for (i = 0; i < s->g->n_mgau; ++i) {
             int32 k;
             if (bitvec_is_clear(s->f->mgau_active, i))
@@ -436,6 +444,7 @@ ptm_mgau_frame_eval(ps_mgau_t *ps,
         ptm_mgau_calc_cb_active(s, senone_active, n_senone_active, compallsen);
         /* Now evaluate top-N, prune, and evaluate remaining codebooks. */
         ptm_mgau_codebook_eval(s, featbuf, frame);
+        ptm_mgau_codebook_norm(s, featbuf, frame);
     }
     /* Evaluate intersection of active senones and active codebooks. */
     ptm_mgau_senone_eval(s, senone_scores, senone_active,
@@ -781,8 +790,8 @@ ptm_mgau_init(acmod_t *acmod, bin_mdef_t *mdef)
     }
 
     /* Read means and variances. */
-    if ((s->g = gauden_init(cmd_ln_str_r(s->config, "-mean"),
-                            cmd_ln_str_r(s->config, "-var"),
+    if ((s->g = gauden_init(cmd_ln_str_r(s->config, "_mean"),
+                            cmd_ln_str_r(s->config, "_var"),
                             cmd_ln_float32_r(s->config, "-varfloor"),
                             s->lmath)) == NULL)
         goto error_out;
@@ -810,13 +819,13 @@ ptm_mgau_init(acmod_t *acmod, bin_mdef_t *mdef)
         }
     }
     /* Read mixture weights. */
-    if ((sendump_path = cmd_ln_str_r(s->config, "-sendump"))) {
+    if ((sendump_path = cmd_ln_str_r(s->config, "_sendump"))) {
         if (read_sendump(s, acmod->mdef, sendump_path) < 0) {
             goto error_out;
         }
     }
     else {
-        if (read_mixw(s, cmd_ln_str_r(s->config, "-mixw"),
+        if (read_mixw(s, cmd_ln_str_r(s->config, "_mixw"),
                       cmd_ln_float32_r(s->config, "-mixwfloor")) < 0) {
             goto error_out;
         }
@@ -878,6 +887,7 @@ ptm_mgau_mllr_transform(ps_mgau_t *ps,
 void
 ptm_mgau_free(ps_mgau_t *ps)
 {
+    int i;
     ptm_mgau_t *s = (ptm_mgau_t *)ps;
 
     logmath_free(s->lmath);
@@ -890,6 +900,13 @@ ptm_mgau_free(ps_mgau_t *ps)
         ckd_free_3d(s->mixw);
     }
     ckd_free(s->sen2cb);
+    
+    for (i = 0; i < s->n_fast_hist; i++) {
+	ckd_free_3d(s->hist[i].topn);
+	bitvec_free(s->hist[i].mgau_active);
+    }
+    ckd_free(s->hist);
+    
     gauden_free(s->g);
     ckd_free(s);
 }

@@ -63,7 +63,6 @@
  * E_INFO and output other lines with E_INFOCONT.
  */
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -164,9 +163,6 @@ err_msg_system(err_lvl_t lvl, const char *path, long ln, const char *fmt, ...);
 
 SPHINXBASE_EXPORT void
 err_logfp_cb(void * user_data, err_lvl_t level, const char *fmt, ...);
-
-SPHINXBASE_EXPORT
-void flushToFile();
 
 typedef void (*err_cb_f)(void* user_data, err_lvl_t, const char *, ...);
 

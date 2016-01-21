@@ -62,7 +62,7 @@ allphone_search_prob(ps_search_t * search)
 }
 
 static void
-allphone_backtrace(allphone_search_t * allphs, int32 f);
+allphone_backtrace(allphone_search_t * allphs, int32 f, int32 *out_score);
 
 static void
 allphone_search_seg_free(ps_seg_t * seg)
@@ -105,12 +105,12 @@ static ps_segfuncs_t fsg_segfuncs = {
 
 
 static ps_seg_t *
-allphone_search_seg_iter(ps_search_t * search, int32 * out_score)
+allphone_search_seg_iter(ps_search_t * search)
 {
     allphone_search_t *allphs = (allphone_search_t *) search;
     phseg_iter_t *iter;
 
-    allphone_backtrace(allphs, allphs->frame - 1);
+    allphone_backtrace(allphs, allphs->frame - 1, NULL);
     if (allphs->segments == NULL)
         return NULL;
     
@@ -125,7 +125,6 @@ allphone_search_seg_iter(ps_search_t * search, int32 * out_score)
 }
 
 static ps_searchfuncs_t allphone_funcs = {
-    /* name: */ "allphone",
     /* start: */ allphone_search_start,
     /* step: */ allphone_search_step,
     /* finish: */ allphone_search_finish,
@@ -355,7 +354,7 @@ phmm_eval_all(allphone_search_t * allphs, const int16 * senscr)
     mdef = ((ps_search_t *) allphs)->acmod->mdef;
     ci_phmm = allphs->ci_phmm;
 
-    best = S3_LOGPROB_ZERO;
+    best = WORST_SCORE;
 
     hmm_context_set_senscore(allphs->hmmctx, senscr);
     for (ci = 0; ci < mdef->n_ciphone; ci++) {
@@ -491,10 +490,6 @@ phmm_trans(allphone_search_t * allphs, int32 best,
             /* No LM, just use uniform (insertion penalty). */
             if (!allphs->lm)
                 tscore = allphs->inspen;
-            /* If they are not in the LM, kill this
-             * transition. */
-            else if (ci2lmwid[to->ci] == NGRAM_INVALID_WID)
-                continue;
             else {
                 int32 n_used;
                 if (h->hist > 0) {
@@ -525,17 +520,17 @@ phmm_trans(allphone_search_t * allphs, int32 best,
 }
 
 ps_search_t *
-allphone_search_init(ngram_model_t * lm,
+allphone_search_init(const char *name,
+                     ngram_model_t * lm,
                      cmd_ln_t * config,
                      acmod_t * acmod, dict_t * dict, dict2pid_t * d2p)
 {
     int i;
     bin_mdef_t *mdef;
     allphone_search_t *allphs;
-    static char *lmname = "default";
 
     allphs = (allphone_search_t *) ckd_calloc(1, sizeof(*allphs));
-    ps_search_init(ps_search_base(allphs), &allphone_funcs, config, acmod,
+    ps_search_init(ps_search_base(allphs), &allphone_funcs, PS_SEARCH_TYPE_ALLPHONE, name, config, acmod,
                    dict, d2p);
     mdef = acmod->mdef;
 
@@ -547,18 +542,24 @@ allphone_search_init(ngram_model_t * lm,
     }
 
     allphs->ci_only = cmd_ln_boolean_r(config, "-allphone_ci");
+    allphs->lw = cmd_ln_float32_r(config, "-lw");
 
     phmm_build(allphs);
 
     if (lm) {
-        //language model is defined
-        allphs->lm = ngram_model_set_init(config, &lm, &lmname, NULL, 1);
-        if (!allphs->lm) {
-            E_ERROR
-                ("Failed to initialize ngram model set for phoneme decoding");
-            allphone_search_free((ps_search_t *) allphs);
-            return NULL;
-        }
+	int32 silwid;
+	
+        allphs->lm = ngram_model_retain(lm);
+        
+        silwid = ngram_wid(allphs->lm, bin_mdef_ciphone_str(mdef,
+                                                            mdef_silphone
+                                                            (mdef)));
+	if (silwid == ngram_unknown_wid(allphs->lm)) {
+	    E_ERROR("Phonetic LM does not have SIL phone in vocabulary\n");
+	    allphone_search_free((ps_search_t *) allphs);
+	    return NULL;
+	}
+        
         allphs->ci2lmwid =
             (int32 *) ckd_calloc(mdef->n_ciphone,
                                  sizeof(*allphs->ci2lmwid));
@@ -566,14 +567,9 @@ allphone_search_init(ngram_model_t * lm,
             allphs->ci2lmwid[i] =
                 ngram_wid(allphs->lm,
                           (char *) bin_mdef_ciphone_str(mdef, i));
-            /* Map filler phones to silence if not found */
-            if (allphs->ci2lmwid[i] == NGRAM_INVALID_WID
-                && bin_mdef_ciphone_str(mdef, i))
-                allphs->ci2lmwid[i] =
-                    ngram_wid(allphs->lm,
-                              (char *) bin_mdef_ciphone_str(mdef,
-                                                            mdef_silphone
-                                                            (mdef)));
+            /* Map filler phones and other missing phones to silence if not found */
+            if (allphs->ci2lmwid[i] == ngram_unknown_wid(allphs->lm))
+                allphs->ci2lmwid[i] = silwid;
         }
     }
     else {
@@ -602,7 +598,6 @@ allphone_search_init(ngram_model_t * lm,
         >> SENSCR_SHIFT;
 
     /* LM related weights/penalties */
-    allphs->lw = cmd_ln_float32_r(config, "-lw");
     allphs->history = blkarray_list_init();
 
     /* Acoustic score scale for posterior probabilities. */
@@ -643,6 +638,7 @@ allphone_search_free(ps_search_t * search)
 {
     allphone_search_t *allphs = (allphone_search_t *) search;
 
+    
     double n_speech = (double)allphs->n_tot_frame
             / cmd_ln_int32_r(ps_search_config(allphs), "-frate");
 
@@ -653,15 +649,16 @@ allphone_search_free(ps_search_t * search)
            allphs->perf.t_tot_elapsed,
            allphs->perf.t_tot_elapsed / n_speech);
 
-    ps_search_deinit(search);
+    ps_search_base_free(search);
+
     hmm_context_free(allphs->hmmctx);
     phmm_free(allphs);
     if (allphs->lm)
         ngram_model_free(allphs->lm);
     if (allphs->ci2lmwid)
         ckd_free(allphs->ci2lmwid);
-
-    blkarray_list_free(allphs->history);
+    if (allphs->history)
+        blkarray_list_free(allphs->history);
 
     ckd_free(allphs);
 }
@@ -751,12 +748,10 @@ static int32
 ascore(allphone_search_t * allphs, history_t * h)
 {
     int32 score = h->score;
-    int32 sf = 0;
 
     if (h->hist > 0) {
         history_t *pred = blkarray_list_get(allphs->history, h->hist);
         score -= pred->score;
-        sf = pred->ef + 1;
     }
 
     return score - h->tscore;
@@ -774,7 +769,7 @@ allphone_clear_segments(allphone_search_t * allphs)
 }
 
 static void
-allphone_backtrace(allphone_search_t * allphs, int32 f)
+allphone_backtrace(allphone_search_t * allphs, int32 f, int32 *out_score)
 {
     int32 best, hist_idx, best_idx;
     int32 frm, last_frm;
@@ -784,6 +779,7 @@ allphone_backtrace(allphone_search_t * allphs, int32 f)
     /* Clear old list */
     allphone_clear_segments(allphs);
 
+    frm = last_frm = f;
     /* Find the first history entry for the requested frame */
     hist_idx = blkarray_list_n_valid(allphs->history) - 1;
     while (hist_idx > 0) {
@@ -813,6 +809,9 @@ allphone_backtrace(allphone_search_t * allphs, int32 f)
 
     if (best_idx < 0)
         return;
+
+    if (out_score)
+        *out_score = best;
 
     /* Backtrace */
     while (best_idx > 0) {
@@ -853,7 +852,7 @@ allphone_search_finish(ps_search_t * search)
          n_hist, (allphs->frame > 0) ? n_hist / allphs->frame : 0);
 
     /* Now backtrace. */
-    allphone_backtrace(allphs, allphs->frame - 1);
+    allphone_backtrace(allphs, allphs->frame - 1, NULL);
 
     /* Print out some statistics. */
     ptmr_stop(&allphs->perf);
@@ -891,7 +890,7 @@ allphone_search_hyp(ps_search_t * search, int32 * out_score,
         ckd_free(search->hyp_str);
     search->hyp_str = NULL;
 
-    allphone_backtrace(allphs, allphs->frame - 1);
+    allphone_backtrace(allphs, allphs->frame - 1, out_score);
     if (allphs->segments == NULL) {
         return NULL;
     }

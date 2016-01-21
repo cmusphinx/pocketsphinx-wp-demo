@@ -240,18 +240,21 @@ invert(float32 ** ainv, float32 ** a, int32 n)
     float32 **tmp_a;
     int32 info, nrhs, i;
 
-    /* Construct an identity matrix. */
-    memset(ainv[0], 0, sizeof(float32) * n * n);
-    for (i = 0; i < n; i++)
-        ainv[i][i] = 1.0;
     /* a is assumed to be symmetric, so we don't need to switch the
      * ordering of the data.  But we do need to copy it since it is
      * overwritten by LAPACK. */
     tmp_a = (float32 **)ckd_calloc_2d(n, n, sizeof(float32));
     memcpy(tmp_a[0], a[0], n*n*sizeof(float32));
+
+    /* Construct an identity matrix. */
+    memset(ainv[0], 0, sizeof(float32) * n * n);
+    for (i = 0; i < n; i++)
+        ainv[i][i] = 1.0;
+
     uplo = 'L';
     nrhs = n;
     sposv_(&uplo, &n, &nrhs, tmp_a[0], &n, ainv[0], &n, &info);
+
     ckd_free_2d((void **)tmp_a);
 
     if (info != 0)
@@ -311,26 +314,3 @@ matrixadd(float32 ** a, float32 ** b, int32 n)
         for (j = 0; j < n; ++j)
             a[i][j] += b[i][j];
 }
-
-
-/*
- * Log record.  Maintained by RCS.
- *
- * $Log$
- * Revision 1.4  2004/07/21  18:05:40  egouvea
- * Changed the license terms to make it the same as sphinx2 and sphinx3.
- * 
- * Revision 1.3  2001/04/05 20:02:30  awb
- * *** empty log message ***
- *
- * Revision 1.2  2000/09/29 22:35:13  awb
- * *** empty log message ***
- *
- * Revision 1.1  2000/09/24 21:38:31  awb
- * *** empty log message ***
- *
- * Revision 1.1  97/07/16  11:36:22  eht
- * Initial revision
- * 
- *
- */

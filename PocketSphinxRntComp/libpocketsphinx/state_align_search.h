@@ -50,6 +50,16 @@
 #include "ps_alignment.h"
 #include "hmm.h"
 
+
+/**
+ * History structure
+ */
+struct state_align_hist_s {
+    uint16 id;
+    int32 score;
+};
+typedef struct state_align_hist_s state_align_hist_t;
+
 /**
  * Phone loop search structure.
  */
@@ -64,12 +74,13 @@ struct state_align_search_s {
     int32 best_score;       /**< Best score in current frame. */
 
     int n_emit_state;       /**< Number of emitting states (tokens per frame) */
-    uint16 *tokens;         /**< Tokens (backpointers) for state alignment. */
+    state_align_hist_t *tokens;         /**< Tokens (backpointers) for state alignment. */
     int n_fr_alloc;         /**< Number of frames of tokens allocated. */
 };
 typedef struct state_align_search_s state_align_search_t;
 
-ps_search_t *state_align_search_init(cmd_ln_t *config,
+ps_search_t *state_align_search_init(const char *name,
+				     cmd_ln_t *config,
                                      acmod_t *acmod,
                                      ps_alignment_t *al);
 

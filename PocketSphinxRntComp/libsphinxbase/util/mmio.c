@@ -126,7 +126,7 @@ mmio_file_ptr(mmio_file_t *mf)
     return (void *)mf;
 }
 
-#elif defined(WIN32) && !defined(_WIN32_WP) /* !WINCE */
+#elif defined(_WIN32) && !defined(_WIN32_WP) /* !WINCE */
 struct mmio_file_s {
 	int dummy;
 };
@@ -231,7 +231,7 @@ mmio_file_read(const char *filename)
     mf = ckd_calloc(1, sizeof(*mf));
     mf->ptr = ptr;
     /* Align map size to next page. */
-    pagesize = getpagesize();
+    pagesize = sysconf(_SC_PAGESIZE);
     mf->mapsize = (buf.st_size + pagesize - 1) / pagesize * pagesize;
 
     return mf;

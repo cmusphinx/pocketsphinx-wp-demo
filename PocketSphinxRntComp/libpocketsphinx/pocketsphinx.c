@@ -80,6 +80,7 @@ file_exists(const char *path)
     return (tmp != NULL);
 }
 
+#ifdef MODELDIR
 static int
 hmmdir_exists(const char *path)
 {
@@ -91,40 +92,69 @@ hmmdir_exists(const char *path)
     ckd_free(mdef);
     return (tmp != NULL);
 }
+#endif
 
 static void
-ps_add_file(ps_decoder_t *ps, const char *arg,
-            const char *hmmdir, const char *file)
+ps_expand_file_config(ps_decoder_t *ps, const char *arg, const char *extra_arg,
+	              const char *hmmdir, const char *file)
 {
-    char *tmp = string_join(hmmdir, "/", file, NULL);
-
-    if (cmd_ln_str_r(ps->config, arg) == NULL && file_exists(tmp))
-        cmd_ln_set_str_r(ps->config, arg, tmp);
-    ckd_free(tmp);
+    const char *val;
+    if ((val = cmd_ln_str_r(ps->config, arg)) != NULL) {
+	cmd_ln_set_str_extra_r(ps->config, extra_arg, val);
+    } else if (hmmdir == NULL) {
+        cmd_ln_set_str_extra_r(ps->config, extra_arg, NULL);
+    } else {
+        char *tmp = string_join(hmmdir, "/", file, NULL);
+        if (file_exists(tmp))
+	    cmd_ln_set_str_extra_r(ps->config, extra_arg, tmp);
+	else
+	    cmd_ln_set_str_extra_r(ps->config, extra_arg, NULL);
+        ckd_free(tmp);
+    }
 }
 
+/* Feature and front-end parameters that may be in feat.params */
+static const arg_t feat_defn[] = {
+    waveform_to_cepstral_command_line_macro(),
+    cepstral_to_feature_command_line_macro(),
+    CMDLN_EMPTY_OPTION
+};
+
 static void
-ps_init_defaults(ps_decoder_t *ps)
+ps_expand_model_config(ps_decoder_t *ps)
 {
+    char const *hmmdir, *featparams;
+
     /* Disable memory mapping on Blackfin (FIXME: should be uClinux in general). */
 #ifdef __ADSPBLACKFIN__
     E_INFO("Will not use mmap() on uClinux/Blackfin.");
     cmd_ln_set_boolean_r(ps->config, "-mmap", FALSE);
 #endif
 
-    char const *hmmdir;
     /* Get acoustic model filenames and add them to the command-line */
-    if ((hmmdir = cmd_ln_str_r(ps->config, "-hmm")) != NULL) {
-        ps_add_file(ps, "-mdef", hmmdir, "mdef");
-        ps_add_file(ps, "-mean", hmmdir, "means");
-        ps_add_file(ps, "-var", hmmdir, "variances");
-        ps_add_file(ps, "-tmat", hmmdir, "transition_matrices");
-        ps_add_file(ps, "-mixw", hmmdir, "mixture_weights");
-        ps_add_file(ps, "-sendump", hmmdir, "sendump");
-        ps_add_file(ps, "-fdict", hmmdir, "noisedict");
-        ps_add_file(ps, "-lda", hmmdir, "feature_transform");
-        ps_add_file(ps, "-featparams", hmmdir, "feat.params");
-        ps_add_file(ps, "-senmgau", hmmdir, "senmgau");
+    hmmdir = cmd_ln_str_r(ps->config, "-hmm");
+    ps_expand_file_config(ps, "-mdef", "_mdef", hmmdir, "mdef");
+    ps_expand_file_config(ps, "-mean", "_mean", hmmdir, "means");
+    ps_expand_file_config(ps, "-var", "_var", hmmdir, "variances");
+    ps_expand_file_config(ps, "-tmat", "_tmat", hmmdir, "transition_matrices");
+    ps_expand_file_config(ps, "-mixw", "_mixw", hmmdir, "mixture_weights");
+    ps_expand_file_config(ps, "-sendump", "_sendump", hmmdir, "sendump");
+    ps_expand_file_config(ps, "-fdict", "_fdict", hmmdir, "noisedict");
+    ps_expand_file_config(ps, "-lda", "_lda", hmmdir, "feature_transform");
+    ps_expand_file_config(ps, "-featparams", "_featparams", hmmdir, "feat.params");
+    ps_expand_file_config(ps, "-senmgau", "_senmgau", hmmdir, "senmgau");
+
+    /* Look for feat.params in acoustic model dir. */
+    if ((featparams = cmd_ln_str_r(ps->config, "_featparams"))) {
+        if (NULL !=
+            cmd_ln_parse_file_r(ps->config, feat_defn, featparams, FALSE))
+            E_INFO("Parsed model-specific feature parameters from %s\n",
+                    featparams);
+    }
+
+    /* Print here because acmod_init might load feat.params file */
+    if (err_get_logfp() != NULL) {
+	cmd_ln_print_values_r(ps->config, err_get_logfp(), ps_args());
     }
 }
 
@@ -132,15 +162,11 @@ static void
 ps_free_searches(ps_decoder_t *ps)
 {
     if (ps->searches) {
-        /* Release keys manually as we used ckd_salloc to add them, release every search too. */
         hash_iter_t *search_it;
         for (search_it = hash_table_iter(ps->searches); search_it;
              search_it = hash_table_iter_next(search_it)) {
-            ckd_free((char *) hash_entry_key(search_it->ent));
             ps_search_free(hash_entry_val(search_it->ent));
         }
-
-        hash_table_empty(ps->searches);
         hash_table_free(ps->searches);
     }
 
@@ -163,8 +189,8 @@ ps_default_search_args(cmd_ln_t *config)
 #ifdef MODELDIR
     /* Set default acoustic and language models. */
     const char *hmmdir = cmd_ln_str_r(config, "-hmm");
-    if (hmmdir == NULL && hmmdir_exists(MODELDIR "/hmm/en_US/hub4wsj_sc_8k")) {
-        hmmdir = MODELDIR "/hmm/en_US/hub4wsj_sc_8k";
+    if (hmmdir == NULL && hmmdir_exists(MODELDIR "/en-us/en-us")) {
+        hmmdir = MODELDIR "/en-us/en-us";
         cmd_ln_set_str_r(config, "-hmm", hmmdir);
     }
 
@@ -172,16 +198,17 @@ ps_default_search_args(cmd_ln_t *config)
 
     if (lmfile == NULL && !cmd_ln_str_r(config, "-fsg")
         && !cmd_ln_str_r(config, "-jsgf")
+        && !cmd_ln_str_r(config, "-lmctl")
         && !cmd_ln_str_r(config, "-kws")
         && !cmd_ln_str_r(config, "-keyphrase")
-        && file_exists(MODELDIR "/lm/en_US/hub4.5000.DMP")) {
-        lmfile = MODELDIR "/lm/en_US/hub4.5000.DMP";
+        && file_exists(MODELDIR "/en-us/en-us.lm.bin")) {
+        lmfile = MODELDIR "/en-us/en-us.lm.bin";
         cmd_ln_set_str_r(config, "-lm", lmfile);
     }
 
     const char *dictfile = cmd_ln_str_r(config, "-dict");
-    if (dictfile == NULL && file_exists(MODELDIR "/lm/en_US/cmu07a.dic")) {
-        dictfile = MODELDIR "/lm/en_US/cmu07a.dic";
+    if (dictfile == NULL && file_exists(MODELDIR "/en-us/cmudict-en-us.dict")) {
+        dictfile = MODELDIR "/en-us/cmudict-en-us.dict";
         cmd_ln_set_str_r(config, "-dict", dictfile);
     }
 
@@ -223,12 +250,21 @@ ps_reinit(ps_decoder_t *ps, cmd_ln_t *config)
     }
 
     err_set_debug_level(cmd_ln_int32_r(ps->config, "-debug"));
+    /* Set up logging. We need to do this earlier because we want to dump
+     * the information to the configured log, not to the stderr. */
+    if (config && cmd_ln_str_r(ps->config, "-logfn")) {
+        if (err_set_logfile(cmd_ln_str_r(ps->config, "-logfn")) < 0) {
+            E_ERROR("Cannot redirect log output\n");
+    	    return -1;
+        }
+    }
+    
     ps->mfclogdir = cmd_ln_str_r(ps->config, "-mfclogdir");
     ps->rawlogdir = cmd_ln_str_r(ps->config, "-rawlogdir");
     ps->senlogdir = cmd_ln_str_r(ps->config, "-senlogdir");
 
     /* Fill in some default arguments. */
-    ps_init_defaults(ps);
+    ps_expand_model_config(ps);
 
     /* Free old searches (do this before other reinit) */
     ps_free_searches(ps);
@@ -262,14 +298,16 @@ ps_reinit(ps_decoder_t *ps, cmd_ln_t *config)
     if ((ps->acmod = acmod_init(ps->config, ps->lmath, NULL, NULL)) == NULL)
         return -1;
 
-    if ((ps->pl_window = cmd_ln_int32_r(ps->config, "-pl_window"))) {
+
+
+    if (cmd_ln_int32_r(ps->config, "-pl_window") > 0) {
         /* Initialize an auxiliary phone loop search, which will run in
          * "parallel" with FSG or N-Gram search. */
         if ((ps->phone_loop =
              phone_loop_search_init(ps->config, ps->acmod, ps->dict)) == NULL)
             return -1;
         hash_table_enter(ps->searches,
-                         ckd_salloc(ps_search_name(ps->phone_loop)),
+                         ps_search_name(ps->phone_loop),
                          ps->phone_loop);
     }
 
@@ -280,36 +318,39 @@ ps_reinit(ps_decoder_t *ps, cmd_ln_t *config)
     if ((ps->d2p = dict2pid_build(ps->acmod->mdef, ps->dict)) == NULL)
         return -1;
 
-    lw = cmd_ln_float32_r(config, "-lw");
+    lw = cmd_ln_float32_r(ps->config, "-lw");
 
     /* Determine whether we are starting out in FSG or N-Gram search mode.
      * If neither is used skip search initialization. */
 
     /* Load KWS if one was specified in config */
-    if ((keyphrase = cmd_ln_str_r(config, "-keyphrase"))) {
+    if ((keyphrase = cmd_ln_str_r(ps->config, "-keyphrase"))) {
         if (ps_set_keyphrase(ps, PS_DEFAULT_SEARCH, keyphrase))
             return -1;
         ps_set_search(ps, PS_DEFAULT_SEARCH);
     }
 
-    if ((path = cmd_ln_str_r(config, "-kws"))) {
+    if ((path = cmd_ln_str_r(ps->config, "-kws"))) {
         if (ps_set_kws(ps, PS_DEFAULT_SEARCH, path))
             return -1;
         ps_set_search(ps, PS_DEFAULT_SEARCH);
     }
 
     /* Load an FSG if one was specified in config */
-    if ((path = cmd_ln_str_r(config, "-fsg"))) {
+    if ((path = cmd_ln_str_r(ps->config, "-fsg"))) {
         fsg_model_t *fsg = fsg_model_readfile(path, ps->lmath, lw);
         if (!fsg)
             return -1;
-        if (ps_set_fsg(ps, PS_DEFAULT_SEARCH, fsg))
+        if (ps_set_fsg(ps, PS_DEFAULT_SEARCH, fsg)) {
+            fsg_model_free(fsg);
             return -1;
+        }
+        fsg_model_free(fsg);
         ps_set_search(ps, PS_DEFAULT_SEARCH);
     }
     
     /* Or load a JSGF grammar */
-    if ((path = cmd_ln_str_r(config, "-jsgf"))) {
+    if ((path = cmd_ln_str_r(ps->config, "-jsgf"))) {
         if (ps_set_jsgf_file(ps, PS_DEFAULT_SEARCH, path)
             || ps_set_search(ps, PS_DEFAULT_SEARCH))
             return -1;
@@ -339,23 +380,24 @@ ps_reinit(ps_decoder_t *ps, cmd_ln_t *config)
         }
 
         for(lmset_it = ngram_model_set_iter(lmset);
-            lmset_it; lmset_it = ngram_model_set_iter_next(lmset_it)) {
-            
+            lmset_it; lmset_it = ngram_model_set_iter_next(lmset_it)) {    
             ngram_model_t *lm = ngram_model_set_iter_model(lmset_it, &name);            
             E_INFO("adding search %s\n", name);
             if (ps_set_lm(ps, name, lm)) {
-            ngram_model_free(lm);
                 ngram_model_set_iter_free(lmset_it);
+        	ngram_model_free(lmset);
                 return -1;
             }
-        ngram_model_free(lm);
         }
+        ngram_model_free(lmset);
 
-        name = cmd_ln_str_r(config, "-lmname");
+        name = cmd_ln_str_r(ps->config, "-lmname");
         if (name)
             ps_set_search(ps, name);
-        else
-            E_WARN("No default LM name (-lmname) for `-lmctl'\n");
+        else {
+            E_ERROR("No default LM name (-lmname) for `-lmctl'\n");
+            return -1;
+        }
     }
 
     /* Initialize performance timer. */
@@ -369,6 +411,11 @@ ps_decoder_t *
 ps_init(cmd_ln_t *config)
 {
     ps_decoder_t *ps;
+    
+    if (!config) {
+	E_ERROR("No configuration specified");
+	return NULL;
+    }
 
     ps = ckd_calloc(1, sizeof(*ps));
     ps->refcount = 1;
@@ -405,15 +452,8 @@ ps_free(ps_decoder_t *ps)
     acmod_free(ps->acmod);
     logmath_free(ps->lmath);
     cmd_ln_free_r(ps->config);
-    ckd_free(ps->uttid);
     ckd_free(ps);
     return 0;
-}
-
-char const *
-ps_get_uttid(ps_decoder_t *ps)
-{
-    return ps->uttid;
 }
 
 cmd_ln_t *
@@ -449,10 +489,26 @@ ps_update_mllr(ps_decoder_t *ps, ps_mllr_t *mllr)
 int
 ps_set_search(ps_decoder_t *ps, const char *name)
 {
-    ps_search_t *search = ps_find_search(ps, name);
-    if (search)
-        ps->search = search;
-    return search ? 0 : -1;
+    ps_search_t *search;
+    
+    if (ps->acmod->state != ACMOD_ENDED && ps->acmod->state != ACMOD_IDLE) {
+	E_ERROR("Cannot change search while decoding, end utterance first\n");
+	return -1;
+    }
+    
+    if (!(search = ps_find_search(ps, name))) {
+	return -1;
+    }
+    
+    ps->search = search;
+    /* Set pl window depending on the search */
+    if (!strcmp(PS_SEARCH_TYPE_NGRAM, ps_search_type(search))) {
+	ps->pl_window = cmd_ln_int32_r(ps->config, "-pl_window");
+    } else {
+	ps->pl_window = 0;
+    }
+    
+    return 0;
 }
 
 const char*
@@ -510,7 +566,7 @@ ngram_model_t *
 ps_get_lm(ps_decoder_t *ps, const char *name)
 {
     ps_search_t *search =  ps_find_search(ps, name);
-    if (search && strcmp(PS_SEARCH_NGRAM, ps_search_name(search)))
+    if (search && strcmp(PS_SEARCH_TYPE_NGRAM, ps_search_type(search)))
         return NULL;
     return search ? ((ngram_search_t *) search)->lmset : NULL;
 }
@@ -519,7 +575,7 @@ fsg_model_t *
 ps_get_fsg(ps_decoder_t *ps, const char *name)
 {
     ps_search_t *search = ps_find_search(ps, name);
-    if (search && strcmp(PS_SEARCH_FSG, ps_search_name(search)))
+    if (search && strcmp(PS_SEARCH_TYPE_FSG, ps_search_type(search)))
         return NULL;
     return search ? ((fsg_search_t *) search)->fsg : NULL;
 }
@@ -528,21 +584,21 @@ const char*
 ps_get_kws(ps_decoder_t *ps, const char* name)
 {
     ps_search_t *search = ps_find_search(ps, name);
-    if (search && strcmp(PS_SEARCH_KWS, ps_search_name(search)))
+    if (search && strcmp(PS_SEARCH_TYPE_KWS, ps_search_type(search)))
         return NULL;
     return search ? kws_search_get_keywords(search) : NULL;
 }
 
 static int
-set_search_internal(ps_decoder_t *ps, const char *name, ps_search_t *search)
+set_search_internal(ps_decoder_t *ps, ps_search_t *search)
 {
     ps_search_t *old_search;
     
     if (!search)
-	return 1;
+	return -1;
 
     search->pls = ps->phone_loop;
-    old_search = (ps_search_t *) hash_table_replace(ps->searches, ckd_salloc(name), search);
+    old_search = (ps_search_t *) hash_table_replace(ps->searches, ps_search_name(search), search);
     if (old_search != search)
         ps_search_free(old_search);
 
@@ -553,8 +609,8 @@ int
 ps_set_lm(ps_decoder_t *ps, const char *name, ngram_model_t *lm)
 {
     ps_search_t *search;
-    search = ngram_search_init(lm, ps->config, ps->acmod, ps->dict, ps->d2p);
-    return set_search_internal(ps, name, search);
+    search = ngram_search_init(name, lm, ps->config, ps->acmod, ps->dict, ps->d2p);
+    return set_search_internal(ps, search);
 }
 
 int
@@ -576,8 +632,8 @@ int
 ps_set_allphone(ps_decoder_t *ps, const char *name, ngram_model_t *lm)
 {
     ps_search_t *search;
-    search = allphone_search_init(lm, ps->config, ps->acmod, ps->dict, ps->d2p);
-    return set_search_internal(ps, name, search);
+    search = allphone_search_init(name, lm, ps->config, ps->acmod, ps->dict, ps->d2p);
+    return set_search_internal(ps, search);
 }
 
 int
@@ -599,27 +655,28 @@ int
 ps_set_kws(ps_decoder_t *ps, const char *name, const char *keyfile)
 {
     ps_search_t *search;
-    search = kws_search_init(NULL, keyfile, ps->config, ps->acmod, ps->dict, ps->d2p);
-    return set_search_internal(ps, name, search);
+    search = kws_search_init(name, NULL, keyfile, ps->config, ps->acmod, ps->dict, ps->d2p);
+    return set_search_internal(ps, search);
 }
 
 int
 ps_set_keyphrase(ps_decoder_t *ps, const char *name, const char *keyphrase)
 {
     ps_search_t *search;
-    search = kws_search_init(keyphrase, NULL, ps->config, ps->acmod, ps->dict, ps->d2p);
-    return set_search_internal(ps, name, search);
+    search = kws_search_init(name, keyphrase, NULL, ps->config, ps->acmod, ps->dict, ps->d2p);
+    return set_search_internal(ps, search);
 }
 
 int
 ps_set_fsg(ps_decoder_t *ps, const char *name, fsg_model_t *fsg)
 {
     ps_search_t *search;
-    search = fsg_search_init(fsg, ps->config, ps->acmod, ps->dict, ps->d2p);
-    return set_search_internal(ps, name, search);
+    search = fsg_search_init(name, fsg, ps->config, ps->acmod, ps->dict, ps->d2p);
+    return set_search_internal(ps, search);
 }
 
-int ps_set_jsgf_file(ps_decoder_t *ps, const char *name, const char *path)
+int 
+ps_set_jsgf_file(ps_decoder_t *ps, const char *name, const char *path)
 {
   fsg_model_t *fsg;
   jsgf_rule_t *rule;
@@ -634,28 +691,54 @@ int ps_set_jsgf_file(ps_decoder_t *ps, const char *name, const char *path)
   rule = NULL;
   /* Take the -toprule if specified. */
   if ((toprule = cmd_ln_str_r(ps->config, "-toprule"))) {
-      char *ruletok;
-      ruletok = string_join("<", toprule, ">", NULL);
-      rule = jsgf_get_rule(jsgf, ruletok);
-      ckd_free(ruletok);
+      rule = jsgf_get_rule(jsgf, toprule);
+      if (rule == NULL) {
+          E_ERROR("Start rule %s not found\n", toprule);
+          jsgf_grammar_free(jsgf);
+          return -1;
+      }
+  } else {
+      rule = jsgf_get_public_rule(jsgf);
+      if (rule == NULL) {
+          E_ERROR("No public rules found in %s\n", path);
+          jsgf_grammar_free(jsgf);
+          return -1;
+      }
+  }
+
+  lw = cmd_ln_float32_r(ps->config, "-lw");
+  fsg = jsgf_build_fsg(jsgf, rule, ps->lmath, lw);
+  result = ps_set_fsg(ps, name, fsg);
+  fsg_model_free(fsg);
+  jsgf_grammar_free(jsgf);
+  return result;
+}
+
+int 
+ps_set_jsgf_string(ps_decoder_t *ps, const char *name, const char *jsgf_string)
+{
+  fsg_model_t *fsg;
+  jsgf_rule_t *rule;
+  char const *toprule;
+  jsgf_t *jsgf = jsgf_parse_string(jsgf_string, NULL);
+  float lw;
+  int result;
+
+  if (!jsgf)
+      return -1;
+
+  rule = NULL;
+  /* Take the -toprule if specified. */
+  if ((toprule = cmd_ln_str_r(ps->config, "-toprule"))) {
+      rule = jsgf_get_rule(jsgf, toprule);
       if (rule == NULL) {
           E_ERROR("Start rule %s not found\n", toprule);
           return -1;
       }
   } else {
-      /* Otherwise, take the first public rule. */
-      jsgf_rule_iter_t *itor;
-
-      for (itor = jsgf_rule_iter(jsgf); itor;
-           itor = jsgf_rule_iter_next(itor)) {
-          rule = jsgf_rule_iter_rule(itor);
-          if (jsgf_rule_public(rule)) {
-              jsgf_rule_iter_free(itor);
-              break;
-          }
-      }
+      rule = jsgf_get_public_rule(jsgf);
       if (rule == NULL) {
-          E_ERROR("No public rules found in %s\n", path);
+          E_ERROR("No public rules found in input string\n");
           return -1;
       }
   }
@@ -667,14 +750,15 @@ int ps_set_jsgf_file(ps_decoder_t *ps, const char *name, const char *path)
   return result;
 }
 
+
 int
 ps_load_dict(ps_decoder_t *ps, char const *dictfile,
              char const *fdictfile, char const *format)
 {
-    cmd_ln_t *newconfig;
     dict2pid_t *d2p;
     dict_t *dict;
     hash_iter_t *search_it;
+    cmd_ln_t *newconfig;
 
     /* Create a new scratch config to load this dict (so existing one
      * won't be affected if it fails) */
@@ -683,10 +767,10 @@ ps_load_dict(ps_decoder_t *ps, char const *dictfile,
                          cmd_ln_boolean_r(ps->config, "-dictcase"));
     cmd_ln_set_str_r(newconfig, "-dict", dictfile);
     if (fdictfile)
-        cmd_ln_set_str_r(newconfig, "-fdict", fdictfile);
+        cmd_ln_set_str_extra_r(newconfig, "_fdict", fdictfile);
     else
-        cmd_ln_set_str_r(newconfig, "-fdict",
-                         cmd_ln_str_r(ps->config, "-fdict"));
+        cmd_ln_set_str_extra_r(newconfig, "_fdict",
+                               cmd_ln_str_r(ps->config, "_fdict"));
 
     /* Try to load it. */
     if ((dict = dict_init(newconfig, ps->acmod->mdef)) == NULL) {
@@ -703,9 +787,6 @@ ps_load_dict(ps_decoder_t *ps, char const *dictfile,
     /* Success!  Update the existing config to reflect new dicts and
      * drop everything into place. */
     cmd_ln_free_r(newconfig);
-    cmd_ln_set_str_r(ps->config, "-dict", dictfile);
-    if (fdictfile)
-        cmd_ln_set_str_r(ps->config, "-fdict", fdictfile);
     dict_free(ps->dict);
     ps->dict = dict;
     dict2pid_free(ps->d2p);
@@ -778,7 +859,7 @@ ps_add_word(ps_decoder_t *ps,
     for (search_it = hash_table_iter(ps->searches); search_it;
          search_it = hash_table_iter_next(search_it)) {
         ps_search_t *search = hash_entry_val(search_it->ent);
-        if (!strcmp(PS_SEARCH_NGRAM, ps_search_name(search))) {
+        if (!strcmp(PS_SEARCH_TYPE_NGRAM, ps_search_type(search))) {
             ngram_model_t *lmset = ((ngram_search_t *) search)->lmset;
             if (ngram_model_add_word(lmset, word, 1.0) == NGRAM_INVALID_WID) {
                 hash_table_iter_free(search_it);
@@ -787,7 +868,7 @@ ps_add_word(ps_decoder_t *ps,
         }
 
         if (update) {
-            if ((rv = ps_search_reinit(ps->search, ps->dict, ps->d2p) < 0)) {
+            if ((rv = ps_search_reinit(search, ps->dict, ps->d2p) < 0)) {
                 hash_table_iter_free(search_it);
                 return rv;
             }
@@ -821,31 +902,34 @@ ps_lookup_word(ps_decoder_t *ps, const char *word)
     return phones;
 }
 
-int
+long
 ps_decode_raw(ps_decoder_t *ps, FILE *rawfh,
-              char const *uttid, long maxsamps)
+              long maxsamps)
 {
-    long total, pos;
+    int16 *data;
+    long total, pos, endpos;
 
-    ps_start_utt(ps, uttid);
+    ps_start_stream(ps);
+    ps_start_utt(ps);
+
     /* If this file is seekable or maxsamps is specified, then decode
      * the whole thing at once. */
-    if (maxsamps != -1 || (pos = ftell(rawfh)) >= 0) {
-        int16 *data;
-
-        if (maxsamps == -1) {
-            long endpos;
-            fseek(rawfh, 0, SEEK_END);
-            endpos = ftell(rawfh);
-            fseek(rawfh, pos, SEEK_SET);
-            maxsamps = endpos - pos;
-        }
+    if (maxsamps != -1) {
         data = ckd_calloc(maxsamps, sizeof(*data));
         total = fread(data, sizeof(*data), maxsamps, rawfh);
         ps_process_raw(ps, data, total, FALSE, TRUE);
         ckd_free(data);
-    }
-    else {
+    } else if ((pos = ftell(rawfh)) >= 0) {
+        fseek(rawfh, 0, SEEK_END);
+        endpos = ftell(rawfh);
+        fseek(rawfh, pos, SEEK_SET);
+        maxsamps = endpos - pos;
+
+        data = ckd_calloc(maxsamps, sizeof(*data));
+        total = fread(data, sizeof(*data), maxsamps, rawfh);
+        ps_process_raw(ps, data, total, FALSE, TRUE);
+        ckd_free(data);
+    } else {
         /* Otherwise decode it in a stream. */
         total = 0;
         while (!feof(rawfh)) {
@@ -869,9 +953,16 @@ ps_start_stream(ps_decoder_t *ps)
 }
 
 int
-ps_start_utt(ps_decoder_t *ps, char const *uttid)
+ps_start_utt(ps_decoder_t *ps)
 {
     int rv;
+    char uttid[16];
+    
+    if (ps->acmod->state == ACMOD_STARTED || ps->acmod->state == ACMOD_PROCESSING) {
+	E_ERROR("Utterance already started\n");
+	return -1;
+    }
+
     if (ps->search == NULL) {
         E_ERROR("No search module is selected, did you forget to "
                 "specify a language model or grammar?\n");
@@ -881,17 +972,9 @@ ps_start_utt(ps_decoder_t *ps, char const *uttid)
     ptmr_reset(&ps->perf);
     ptmr_start(&ps->perf);
 
-    if (uttid) {
-        ckd_free(ps->uttid);
-        ps->uttid = ckd_salloc(uttid);
-    }
-    else {
-        char nuttid[16];
-        ckd_free(ps->uttid);
-        sprintf(nuttid, "%09u", ps->uttno);
-        ps->uttid = ckd_salloc(nuttid);
-        ++ps->uttno;
-    }
+    sprintf(uttid, "%09u", ps->uttno);
+    ++ps->uttno;
+
     /* Remove any residual word lattice and hypothesis. */
     ps_lattice_free(ps->search->dag);
     ps->search->dag = NULL;
@@ -899,14 +982,13 @@ ps_start_utt(ps_decoder_t *ps, char const *uttid)
     ps->search->post = 0;
     ckd_free(ps->search->hyp_str);
     ps->search->hyp_str = NULL;
-
     if ((rv = acmod_start_utt(ps->acmod)) < 0)
         return rv;
 
     /* Start logging features and audio if requested. */
     if (ps->mfclogdir) {
         char *logfn = string_join(ps->mfclogdir, "/",
-                                  ps->uttid, ".mfc", NULL);
+                                  uttid, ".mfc", NULL);
         FILE *mfcfh;
         E_INFO("Writing MFCC log file: %s\n", logfn);
         if ((mfcfh = fopen(logfn, "wb")) == NULL) {
@@ -919,7 +1001,7 @@ ps_start_utt(ps_decoder_t *ps, char const *uttid)
     }
     if (ps->rawlogdir) {
         char *logfn = string_join(ps->rawlogdir, "/",
-                                  ps->uttid, ".raw", NULL);
+                                  uttid, ".raw", NULL);
         FILE *rawfh;
         E_INFO("Writing raw audio log file: %s\n", logfn);
         if ((rawfh = fopen(logfn, "wb")) == NULL) {
@@ -932,7 +1014,7 @@ ps_start_utt(ps_decoder_t *ps, char const *uttid)
     }
     if (ps->senlogdir) {
         char *logfn = string_join(ps->senlogdir, "/",
-                                  ps->uttid, ".sen", NULL);
+                                  uttid, ".sen", NULL);
         FILE *senfh;
         E_INFO("Writing senone score log file: %s\n", logfn);
         if ((senfh = fopen(logfn, "wb")) == NULL) {
@@ -959,7 +1041,7 @@ ps_search_forward(ps_decoder_t *ps)
     nfr = 0;
     while (ps->acmod->n_feat_frame > 0) {
         int k;
-        if (ps->phone_loop)
+        if (ps->pl_window > 0)
             if ((k = ps_search_step(ps->phone_loop, ps->acmod->output_frame)) < 0)
                 return k;
         if (ps->acmod->output_frame >= ps->pl_window)
@@ -974,12 +1056,11 @@ ps_search_forward(ps_decoder_t *ps)
 }
 
 int
-ps_decode_senscr(ps_decoder_t *ps, FILE *senfh,
-                 char const *uttid)
+ps_decode_senscr(ps_decoder_t *ps, FILE *senfh)
 {
     int nfr, n_searchfr;
 
-    ps_start_utt(ps, uttid);
+    ps_start_utt(ps);
     n_searchfr = 0;
     acmod_set_insenfh(ps->acmod, senfh);
     while ((nfr = acmod_read_scores(ps->acmod)) > 0) {
@@ -1067,6 +1148,10 @@ ps_end_utt(ps_decoder_t *ps)
 {
     int rv, i;
 
+    if (ps->acmod->state == ACMOD_ENDED || ps->acmod->state == ACMOD_IDLE) {
+	E_ERROR("Utterance is not started\n");
+	return -1;
+    }
     acmod_end_utt(ps->acmod);
 
     /* Search any remaining frames. */
@@ -1082,9 +1167,11 @@ ps_end_utt(ps_decoder_t *ps)
         }
     }
     /* Search any frames remaining in the lookahead window. */
-    for (i = ps->acmod->output_frame - ps->pl_window;
-         i < ps->acmod->output_frame; ++i)
-        ps_search_step(ps->search, i);
+    if (ps->acmod->output_frame >= ps->pl_window) {
+        for (i = ps->acmod->output_frame - ps->pl_window;
+             i < ps->acmod->output_frame; ++i)
+            ps_search_step(ps->search, i);
+    }
     /* Finish main search. */
     if ((rv = ps_search_finish(ps->search)) < 0) {
         ptmr_stop(&ps->perf);
@@ -1094,17 +1181,17 @@ ps_end_utt(ps_decoder_t *ps)
 
     /* Log a backtrace if requested. */
     if (cmd_ln_boolean_r(ps->config, "-backtrace")) {
-        char const *uttid, *hyp;
+        const char* hyp;
         ps_seg_t *seg;
         int32 score;
 
-        hyp = ps_get_hyp(ps, &score, &uttid);
+        hyp = ps_get_hyp(ps, &score);
         
         if (hyp != NULL) {
-    	    E_INFO("%s: %s (%d)\n", uttid, hyp, score);
+    	    E_INFO("%s (%d)\n", hyp, score);
     	    E_INFO_NOFN("%-20s %-5s %-5s %-5s %-10s %-10s %-3s\n",
                     "word", "start", "end", "pprob", "ascr", "lscr", "lback");
-    	    for (seg = ps_seg_iter(ps, &score); seg;
+    	    for (seg = ps_seg_iter(ps); seg;
         	 seg = ps_seg_next(seg)) {
     	        char const *word;
         	int sf, ef;
@@ -1123,14 +1210,12 @@ ps_end_utt(ps_decoder_t *ps)
 }
 
 char const *
-ps_get_hyp(ps_decoder_t *ps, int32 *out_best_score, char const **out_uttid)
+ps_get_hyp(ps_decoder_t *ps, int32 *out_best_score)
 {
     char const *hyp;
 
     ptmr_start(&ps->perf);
     hyp = ps_search_hyp(ps->search, out_best_score, NULL);
-    if (out_uttid)
-        *out_uttid = ps->uttid;
     ptmr_stop(&ps->perf);
     return hyp;
 }
@@ -1148,25 +1233,23 @@ ps_get_hyp_final(ps_decoder_t *ps, int32 *out_is_final)
 
 
 int32
-ps_get_prob(ps_decoder_t *ps, char const **out_uttid)
+ps_get_prob(ps_decoder_t *ps)
 {
     int32 prob;
 
     ptmr_start(&ps->perf);
     prob = ps_search_prob(ps->search);
-    if (out_uttid)
-        *out_uttid = ps->uttid;
     ptmr_stop(&ps->perf);
     return prob;
 }
 
 ps_seg_t *
-ps_seg_iter(ps_decoder_t *ps, int32 *out_best_score)
+ps_seg_iter(ps_decoder_t *ps)
 {
     ps_seg_t *itor;
 
     ptmr_start(&ps->perf);
-    itor = ps_search_seg_iter(ps->search, out_best_score);
+    itor = ps_search_seg_iter(ps->search);
     ptmr_stop(&ps->perf);
     return itor;
 }
@@ -1214,14 +1297,12 @@ ps_get_lattice(ps_decoder_t *ps)
 }
 
 ps_nbest_t *
-ps_nbest(ps_decoder_t *ps, int sf, int ef,
-         char const *ctx1, char const *ctx2)
+ps_nbest(ps_decoder_t *ps)
 {
     ps_lattice_t *dag;
     ngram_model_t *lmset;
     ps_astar_t *nbest;
     float32 lwf;
-    int32 w1, w2;
 
     if (ps->search == NULL)
         return NULL;
@@ -1231,7 +1312,7 @@ ps_nbest(ps_decoder_t *ps, int sf, int ef,
     /* FIXME: This is all quite specific to N-Gram search.  Either we
      * should make N-best a method for each search module or it needs
      * to be abstracted to work for N-Gram and FSG. */
-    if (0 != strcmp(ps_search_name(ps->search), PS_SEARCH_NGRAM)) {
+    if (0 != strcmp(ps_search_type(ps->search), PS_SEARCH_TYPE_NGRAM)) {
         lmset = NULL;
         lwf = 1.0f;
     } else {
@@ -1239,9 +1320,9 @@ ps_nbest(ps_decoder_t *ps, int sf, int ef,
         lwf = ((ngram_search_t *)ps->search)->bestpath_fwdtree_lw_ratio;
     }
 
-    w1 = ctx1 ? dict_wordid(ps_search_dict(ps->search), ctx1) : -1;
-    w2 = ctx2 ? dict_wordid(ps_search_dict(ps->search), ctx2) : -1;
-    nbest = ps_astar_start(dag, lmset, lwf, sf, ef, w1, w2);
+    nbest = ps_astar_start(dag, lmset, lwf, 0, -1, -1, -1);
+
+    nbest = ps_nbest_next(nbest);
 
     return (ps_nbest_t *)nbest;
 }
@@ -1277,11 +1358,11 @@ ps_nbest_hyp(ps_nbest_t *nbest, int32 *out_score)
 }
 
 ps_seg_t *
-ps_nbest_seg(ps_nbest_t *nbest, int32 *out_score)
+ps_nbest_seg(ps_nbest_t *nbest)
 {
     if (nbest->top == NULL)
         return NULL;
-    if (out_score) *out_score = nbest->top->score;
+
     return ps_astar_seg_iter(nbest, nbest->top, 1.0);
 }
 
@@ -1323,10 +1404,15 @@ ps_get_in_speech(ps_decoder_t *ps)
 
 void
 ps_search_init(ps_search_t *search, ps_searchfuncs_t *vt,
+	       const char *type,
+	       const char *name,
                cmd_ln_t *config, acmod_t *acmod, dict_t *dict,
                dict2pid_t *d2p)
 {
     search->vt = vt;
+    search->name = ckd_salloc(name);
+    search->type = ckd_salloc(type);
+
     search->config = config;
     search->acmod = acmod;
     if (d2p)
@@ -1345,6 +1431,19 @@ ps_search_init(ps_search_t *search, ps_searchfuncs_t *vt,
         search->start_wid = search->finish_wid = search->silence_wid = -1;
         search->n_words = 0;
     }
+}
+
+void
+ps_search_base_free(ps_search_t *search)
+{
+    /* FIXME: We will have refcounting on acmod, config, etc, at which
+     * point we will free them here too. */
+    ckd_free(search->name);
+    ckd_free(search->type);
+    dict_free(search->dict);
+    dict2pid_free(search->d2p);
+    ckd_free(search->hyp_str);
+    ps_lattice_free(search->dag);
 }
 
 void
@@ -1373,13 +1472,13 @@ ps_search_base_reinit(ps_search_t *search, dict_t *dict,
 }
 
 void
-ps_search_deinit(ps_search_t *search)
+ps_set_rawdata_size(ps_decoder_t *ps, int32 size) 
 {
-    /* FIXME: We will have refcounting on acmod, config, etc, at which
-     * point we will free them here too. */
-    dict_free(search->dict);
-    dict2pid_free(search->d2p);
-    ckd_free(search->hyp_str);
-    ps_lattice_free(search->dag);
+    acmod_set_rawdata_size(ps->acmod, size);
 }
 
+void
+ps_get_rawdata(ps_decoder_t *ps, int16 **buffer, int32 *size)
+{
+    acmod_get_rawdata(ps->acmod, buffer, size);
+}
