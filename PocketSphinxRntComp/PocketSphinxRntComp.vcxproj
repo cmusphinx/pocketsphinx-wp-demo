@@ -213,10 +213,18 @@
     <ClCompile Include="libsphinxbase\util\slamch.c" />
     <ClCompile Include="libsphinxbase\util\slapack_lite.c" />
     <ClCompile Include="libsphinxbase\util\strfuncs.c" />
-    <ClCompile Include="Output.cpp" />
-    <ClCompile Include="pch.cpp" />
-    <ClCompile Include="SpeechRecognizer.cpp" />
-    <ClCompile Include="WasapiAudio.cpp" />
+    <ClCompile Include="Output.cpp" >
+      <CompileAsWinRT>true</CompileAsWinRT>
+    </ClCompile>
+    <ClCompile Include="pch.cpp" >
+      <CompileAsWinRT>true</CompileAsWinRT>
+    </ClCompile>
+    <ClCompile Include="SpeechRecognizer.cpp" >
+      <CompileAsWinRT>true</CompileAsWinRT>
+    </ClCompile>
+    <ClCompile Include="WasapiAudio.cpp" >
+      <CompileAsWinRT>true</CompileAsWinRT>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\cmdln_macro.h" />
