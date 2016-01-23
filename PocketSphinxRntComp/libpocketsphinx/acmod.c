@@ -62,13 +62,6 @@
 #include "ptm_mgau.h"
 #include "ms_mgau.h"
 
-/* Feature and front-end parameters that may be in feat.params */
-static const arg_t feat_defn[] = {
-    waveform_to_cepstral_command_line_macro(),
-    cepstral_to_feature_command_line_macro(),
-    CMDLN_EMPTY_OPTION
-};
-
 #ifndef WORDS_BIGENDIAN
 #define WORDS_BIGENDIAN 1
 #endif
@@ -81,7 +74,7 @@ acmod_init_am(acmod_t *acmod)
     char const *mdeffn, *tmatfn, *mllrfn, *hmmdir;
 
     /* Read model definition. */
-    if ((mdeffn = cmd_ln_str_r(acmod->config, "-mdef")) == NULL) {
+    if ((mdeffn = cmd_ln_str_r(acmod->config, "_mdef")) == NULL) {
         if ((hmmdir = cmd_ln_str_r(acmod->config, "-hmm")) == NULL)
             E_ERROR("Acoustic model definition is not specified either "
                     "with -mdef option or with -hmm\n");
@@ -98,7 +91,7 @@ acmod_init_am(acmod_t *acmod)
     }
 
     /* Read transition matrices. */
-    if ((tmatfn = cmd_ln_str_r(acmod->config, "-tmat")) == NULL) {
+    if ((tmatfn = cmd_ln_str_r(acmod->config, "_tmat")) == NULL) {
         E_ERROR("No tmat file specified\n");
         return -1;
     }
@@ -107,24 +100,24 @@ acmod_init_am(acmod_t *acmod)
                             TRUE);
 
     /* Read the acoustic models. */
-    if ((cmd_ln_str_r(acmod->config, "-mean") == NULL)
-        || (cmd_ln_str_r(acmod->config, "-var") == NULL)
-        || (cmd_ln_str_r(acmod->config, "-tmat") == NULL)) {
+    if ((cmd_ln_str_r(acmod->config, "_mean") == NULL)
+        || (cmd_ln_str_r(acmod->config, "_var") == NULL)
+        || (cmd_ln_str_r(acmod->config, "_tmat") == NULL)) {
         E_ERROR("No mean/var/tmat files specified\n");
         return -1;
     }
 
-    if (cmd_ln_str_r(acmod->config, "-senmgau")) {
+    if (cmd_ln_str_r(acmod->config, "_senmgau")) {
         E_INFO("Using general multi-stream GMM computation\n");
         acmod->mgau = ms_mgau_init(acmod, acmod->lmath, acmod->mdef);
         if (acmod->mgau == NULL)
             return -1;
     }
     else {
-        E_INFO("Attempting to use SCHMM computation module\n");
-        if ((acmod->mgau = s2_semi_mgau_init(acmod)) == NULL) {
-            E_INFO("Attempting to use PTHMM computation module\n");
-            if ((acmod->mgau = ptm_mgau_init(acmod, acmod->mdef)) == NULL) {
+        E_INFO("Attempting to use PTM computation module\n");
+        if ((acmod->mgau = ptm_mgau_init(acmod, acmod->mdef)) == NULL) {
+            E_INFO("Attempting to use semi-continuous computation module\n");
+            if ((acmod->mgau = s2_semi_mgau_init(acmod)) == NULL) {
                 E_INFO("Falling back to general multi-stream GMM computation\n");
                 acmod->mgau = ms_mgau_init(acmod, acmod->lmath, acmod->mdef);
                 if (acmod->mgau == NULL)
@@ -156,11 +149,11 @@ acmod_init_feat(acmod_t *acmod)
     if (acmod->fcb == NULL)
         return -1;
 
-    if (cmd_ln_str_r(acmod->config, "-lda")) {
+    if (cmd_ln_str_r(acmod->config, "_lda")) {
         E_INFO("Reading linear feature transformation from %s\n",
-               cmd_ln_str_r(acmod->config, "-lda"));
+               cmd_ln_str_r(acmod->config, "_lda"));
         if (feat_read_lda(acmod->fcb,
-                          cmd_ln_str_r(acmod->config, "-lda"),
+                          cmd_ln_str_r(acmod->config, "_lda"),
                           cmd_ln_int32_r(acmod->config, "-ldadim")) < 0)
             return -1;
     }
@@ -192,12 +185,12 @@ acmod_init_feat(acmod_t *acmod)
         while (nvals < acmod->fcb->cmn_struct->veclen
                && (cc = strchr(c, ',')) != NULL) {
             *cc = '\0';
-            acmod->fcb->cmn_struct->cmn_mean[nvals] = FLOAT2MFCC(atof(c));
+            acmod->fcb->cmn_struct->cmn_mean[nvals] = FLOAT2MFCC(atof_c(c));
             c = cc + 1;
             ++nvals;
         }
         if (nvals < acmod->fcb->cmn_struct->veclen && *c != '\0') {
-            acmod->fcb->cmn_struct->cmn_mean[nvals] = FLOAT2MFCC(atof(c));
+            acmod->fcb->cmn_struct->cmn_mean[nvals] = FLOAT2MFCC(atof_c(c));
         }
         ckd_free(vallist);
     }
@@ -237,20 +230,11 @@ acmod_t *
 acmod_init(cmd_ln_t *config, logmath_t *lmath, fe_t *fe, feat_t *fcb)
 {
     acmod_t *acmod;
-    char const *featparams;
 
     acmod = ckd_calloc(1, sizeof(*acmod));
     acmod->config = cmd_ln_retain(config);
     acmod->lmath = lmath;
     acmod->state = ACMOD_IDLE;
-
-    /* Look for feat.params in acoustic model dir. */
-    if ((featparams = cmd_ln_str_r(acmod->config, "-featparams"))) {
-        if (NULL !=
-            cmd_ln_parse_file_r(acmod->config, feat_defn, featparams, FALSE))
-            E_INFO("Parsed model-specific feature parameters from %s\n",
-                    featparams);
-    }
 
     /* Initialize feature computation. */
     if (fe) {
@@ -339,6 +323,7 @@ acmod_free(acmod_t *acmod)
     ckd_free(acmod->senone_scores);
     ckd_free(acmod->senone_active_vec);
     ckd_free(acmod->senone_active);
+    ckd_free(acmod->rawdata);
 
     if (acmod->mdef)
         bin_mdef_free(acmod->mdef);
@@ -372,7 +357,7 @@ acmod_write_senfh_header(acmod_t *acmod, FILE *logfh)
     sprintf(logbasestr, "%f", logmath_get_base(acmod->lmath));
     return bio_writehdr(logfh,
                         "version", "0.1",
-                        "mdef_file", cmd_ln_str_r(acmod->config, "-mdef"),
+                        "mdef_file", cmd_ln_str_r(acmod->config, "_mdef"),
                         "n_sen", nsenstr,
                         "logbase", logbasestr, NULL);
 }
@@ -449,6 +434,8 @@ acmod_start_utt(acmod_t *acmod)
     acmod->senscr_frame = -1;
     acmod->n_senone_active = 0;
     acmod->mgau->frame_idx = 0;
+    acmod->rawdata_pos = 0;
+
     return 0;
 }
 
@@ -473,7 +460,8 @@ acmod_end_utt(acmod_t *acmod)
             feat_update_stats(acmod->fcb);
     }
     if (acmod->mfcfh) {
-        int32 outlen, rv;
+        long outlen;
+        int32 rv;
         outlen = (ftell(acmod->mfcfh) - 4) / 4;
         if (!WORDS_BIGENDIAN)
             SWAP_INT32(&outlen);
@@ -569,8 +557,12 @@ acmod_process_full_raw(acmod_t *acmod,
     mfcc_t **cepptr;
 
     /* Write to logging file if any. */
+    if (*inout_n_samps + acmod->rawdata_pos < acmod->rawdata_size) {
+	memcpy(acmod->rawdata + acmod->rawdata_pos, *inout_raw, *inout_n_samps * sizeof(int16));
+	acmod->rawdata_pos += *inout_n_samps;
+    }
     if (acmod->rawfh)
-        fwrite(*inout_raw, 2, *inout_n_samps, acmod->rawfh);
+        fwrite(*inout_raw, sizeof(int16), *inout_n_samps, acmod->rawfh);
     /* Resize mfc_buf to fit. */
     if (fe_process_frames(acmod->fe, NULL, inout_n_samps, NULL, &nfr, NULL) < 0)
         return -1;
@@ -640,7 +632,7 @@ acmod_process_raw(acmod_t *acmod,
     int32 ncep;
     int32 out_frameidx;
     int16 const *prev_audio_inptr;
-
+    
     /* If this is a full utterance, process it all at once. */
     if (full_utt)
         return acmod_process_full_raw(acmod, inout_raw, inout_n_samps);
@@ -649,6 +641,7 @@ acmod_process_raw(acmod_t *acmod,
      * (in practice, there will probably be none) */
     if (inout_n_samps && *inout_n_samps) {
         int inptr;
+        int32 processed_samples;
 
         prev_audio_inptr = *inout_raw;
         /* Total number of frames available. */
@@ -666,10 +659,15 @@ acmod_process_raw(acmod_t *acmod,
 	    if (out_frameidx > 0)
 		acmod->utt_start_frame = out_frameidx;
 
+    	    processed_samples = *inout_raw - prev_audio_inptr;
+	    if (processed_samples + acmod->rawdata_pos < acmod->rawdata_size) {
+		memcpy(acmod->rawdata + acmod->rawdata_pos, prev_audio_inptr, processed_samples * sizeof(int16));
+		acmod->rawdata_pos += processed_samples;
+	    }
             /* Write to logging file if any. */
             if (acmod->rawfh) {
-                fwrite(prev_audio_inptr, 2,
-                       *inout_raw - prev_audio_inptr,
+                fwrite(prev_audio_inptr, sizeof(int16),
+                       processed_samples,
                        acmod->rawfh);
             }
             prev_audio_inptr = *inout_raw;
@@ -697,9 +695,15 @@ acmod_process_raw(acmod_t *acmod,
 	if (out_frameidx > 0)
 	    acmod->utt_start_frame = out_frameidx;
 
+	
+	processed_samples = *inout_raw - prev_audio_inptr;
+	if (processed_samples + acmod->rawdata_pos < acmod->rawdata_size) {
+	    memcpy(acmod->rawdata + acmod->rawdata_pos, prev_audio_inptr, processed_samples * sizeof(int16));
+	    acmod->rawdata_pos += processed_samples;
+	}
         if (acmod->rawfh) {
-            fwrite(prev_audio_inptr, 2,
-                   *inout_raw - prev_audio_inptr, acmod->rawfh);
+            fwrite(prev_audio_inptr, sizeof(int16),
+                   processed_samples, acmod->rawfh);
         }
         prev_audio_inptr = *inout_raw;
         acmod->n_mfc_frame += ncep;
@@ -860,9 +864,9 @@ acmod_read_senfh_header(acmod_t *acmod)
         }
 
         if (!strcmp(name[i], "logbase")) {
-            if (fabs(atof(val[i]) - logmath_get_base(acmod->lmath)) > 0.001) {
+            if (fabs(atof_c(val[i]) - logmath_get_base(acmod->lmath)) > 0.001) {
                 E_ERROR("Logbase in senone file (%f) does not match acmod "
-                        "(%f)\n", atof(val[i]),
+                        "(%f)\n", atof_c(val[i]),
                         logmath_get_base(acmod->lmath));
                 goto error_out;
             }
@@ -971,7 +975,7 @@ acmod_read_scores_internal(acmod_t *acmod)
 {
     FILE *senfh = acmod->insenfh;
     int16 n_active;
-    int rv;
+    size_t rv;
 
     if (acmod->n_feat_frame == acmod->n_feat_alloc) {
         if (acmod->grow_feat)
@@ -982,44 +986,46 @@ acmod_read_scores_internal(acmod_t *acmod)
 
     if (senfh == NULL)
         return -1;
-    if ((rv = fread(&n_active, 2, 1, senfh)) < 0)
+    
+    if ((rv = fread(&n_active, 2, 1, senfh)) != 1)
         goto error_out;
-    else if (rv == 0)
-        return 0;
 
     acmod->n_senone_active = n_active;
     if (acmod->n_senone_active == bin_mdef_n_sen(acmod->mdef)) {
         if ((rv = fread(acmod->senone_scores, 2,
-                        acmod->n_senone_active, senfh)) < 0)
+                        acmod->n_senone_active, senfh)) != acmod->n_senone_active)
             goto error_out;
-        else if (rv != acmod->n_senone_active)
-            return 0;
     }
     else {
         int i, n;
+        
         if ((rv = fread(acmod->senone_active, 1,
-                        acmod->n_senone_active, senfh)) < 0)
+                        acmod->n_senone_active, senfh)) != acmod->n_senone_active)
             goto error_out;
-        else if (rv != acmod->n_senone_active)
-            return 0;
+
         for (i = 0, n = 0; i < acmod->n_senone_active; ++i) {
             int j, sen = n + acmod->senone_active[i];
             for (j = n + 1; j < sen; ++j)
                 acmod->senone_scores[j] = SENSCR_DUMMY;
-            if ((rv = fread(acmod->senone_scores + sen, 2, 1, senfh)) < 0)
+            
+            if ((rv = fread(acmod->senone_scores + sen, 2, 1, senfh)) != 1)
                 goto error_out;
-            else if (rv == 0)
-                return 0;
+            
             n = sen;
         }
-        ++n;
+
+        n++;
         while (n < bin_mdef_n_sen(acmod->mdef))
             acmod->senone_scores[n++] = SENSCR_DUMMY;
     }
     return 1;
+
 error_out:
-    E_ERROR_SYSTEM("Failed to read frame from senone file");
-    return -1;
+    if (ferror(senfh)) {
+        E_ERROR_SYSTEM("Failed to read frame from senone file");
+        return -1;
+    }
+    return 0;
 }
 
 int
@@ -1330,3 +1336,26 @@ acmod_start_stream(acmod_t *acmod)
     fe_start_stream(acmod->fe);
     acmod->utt_start_frame = 0;
 }
+
+void
+acmod_set_rawdata_size(acmod_t *acmod, int32 size)
+{	
+    assert(size >= 0);
+    acmod->rawdata_size = size;
+    if (acmod->rawdata_size > 0) {
+	ckd_free(acmod->rawdata);
+	acmod->rawdata = ckd_calloc(size, sizeof(int16));
+    }
+}
+
+void
+acmod_get_rawdata(acmod_t *acmod, int16 **buffer, int32 *size)
+{
+    if (buffer) {
+	*buffer = acmod->rawdata;
+    }
+    if (size) {
+	*size = acmod->rawdata_pos;
+    }
+}
+

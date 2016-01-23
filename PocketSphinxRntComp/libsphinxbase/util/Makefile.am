@@ -9,6 +9,7 @@ LAPACK_LITE_SRCS = \
 endif
 
 libsphinxutil_la_SOURCES = \
+	bitarr.c \
 	bitvec.c \
 	bio.c \
 	case.c \
@@ -27,10 +28,10 @@ libsphinxutil_la_SOURCES = \
 	mmio.c \
 	pio.c \
 	matrix.c \
+	priority_queue.c \
 	profile.c \
 	sbthread.c \
 	strfuncs.c \
-	utf8.c \
 	$(LAPACK_LITE_SRCS)
 
 EXTRA_DIST = \
@@ -39,8 +40,8 @@ EXTRA_DIST = \
 	blas_lite.c \
 	f2c_lite.c
 
-INCLUDES = -I$(top_srcdir)/include/sphinxbase \
+AM_CFLAGS =-I$(top_srcdir)/include/sphinxbase \
 	   -I$(top_srcdir)/include \
-           -I$(top_builddir)/include 
+	   -I$(top_builddir)/include 
 
 LIBOBJS = @LIBOBJS@

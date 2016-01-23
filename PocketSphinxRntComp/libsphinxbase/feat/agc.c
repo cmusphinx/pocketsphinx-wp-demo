@@ -164,9 +164,9 @@ agc_emax_update(agc_t *agc)
 
         /* Re-estimate max over past history; decay the history */
         agc->max = agc->obs_max_sum / agc->obs_utt;
-        if (agc->obs_utt == 8) {
+        if (agc->obs_utt == 16) {
             agc->obs_max_sum /= 2;
-            agc->obs_utt = 4;
+            agc->obs_utt = 8;
         }
     }
     E_INFO("AGCEMax: obs= %.2f, new= %.2f\n", agc->obs_max, agc->max);
@@ -203,13 +203,15 @@ agc_noise(agc_t *agc,
             noise_frames++;
         }
     }
-    noise_level /= noise_frames;
 
-    E_INFO("AGC NOISE: max= %6.3f\n", MFCC2FLOAT(noise_level));
-
-    /* Subtract noise_level from all log_energy values */
-    for (i = 0; i < nfr; ++i)
-        cep[i][0] -= noise_level;
+    if (noise_frames > 0) {
+        noise_level /= noise_frames;
+        E_INFO("AGC NOISE: max= %6.3f\n", MFCC2FLOAT(noise_level));
+        /* Subtract noise_level from all log_energy values */
+        for (i = 0; i < nfr; i++) {
+            cep[i][0] -= noise_level;
+        }
+    }
 }
 
 void

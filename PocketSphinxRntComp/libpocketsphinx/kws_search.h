@@ -54,6 +54,7 @@
 typedef struct kws_seg_s {
     ps_seg_t base;       /**< Base structure. */
     gnode_t *detection;  /**< Keyword detection correspondent to segment. */
+    frame_idx_t last_frame; /**< Last frame to raise the detection */
 } kws_seg_t;
 
 typedef struct kws_keyword_s {
@@ -62,9 +63,6 @@ typedef struct kws_keyword_s {
     hmm_t* hmms;
     int32 n_hmms;
 } kws_keyword_t;
-
-/** Access macros */
-#define hmm_is_active(hmm) (hmm.frame > 0)
 
 /**
  * Implementation of KWS search structure.
@@ -75,7 +73,7 @@ typedef struct kws_search_s {
     hmm_context_t *hmmctx;        /**< HMM context. */
 
     kws_detections_t *detections; /**< Keyword spotting history */
-    kws_keyword_t* keyphrases;   /**< Keyphrases to spot */
+    kws_keyword_t* keyphrases;    /**< Keyphrases to spot */
     int n_keyphrases;             /**< Keyphrases amount */
     frame_idx_t frame;            /**< Frame index */
 
@@ -84,17 +82,18 @@ typedef struct kws_search_s {
     int32 plp;                    /**< Phone loop probability */
     int32 bestscore;              /**< For beam pruning */
     int32 def_threshold;          /**< default threshold for p(hyp)/p(altern) ratio */
+    int32 delay;                  /**< Delay to wait for best detection score */
 
     int32 n_pl;                   /**< Number of CI phones */
     hmm_t *pl_hmms;               /**< Phone loop hmms - hmms of CI phones */
-
 } kws_search_t;
 
 /**
  * Create, initialize and return a search module. Gets keywords either
  * from keyphrase or from a keyphrase file.
  */
-ps_search_t *kws_search_init(const char *keyphrase,
+ps_search_t *kws_search_init(const char *name,
+			     const char *keyphrase,
 			     const char *keyfile,
                              cmd_ln_t * config,
                              acmod_t * acmod,

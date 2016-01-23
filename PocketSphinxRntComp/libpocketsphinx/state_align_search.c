@@ -138,7 +138,7 @@ extend_tokenstack(state_align_search_t *sas, int frame_idx)
 static void
 record_transitions(state_align_search_t *sas, int frame_idx)
 {
-    uint16 *tokens;
+    state_align_hist_t *tokens;
     int i;
 
     /* Push another frame of tokens on the stack. */
@@ -155,7 +155,8 @@ record_transitions(state_align_search_t *sas, int frame_idx)
         for (j = 0; j < sas->hmmctx->n_emit_state; ++j) {
             int state_idx = i * sas->hmmctx->n_emit_state + j;
             /* Record their backpointers on the token stack. */
-            tokens[state_idx] = hmm_history(hmm, j);
+            tokens[state_idx].id = hmm_history(hmm, j);
+            tokens[state_idx].score = hmm_score(hmm, j);
             /* Update backpointer fields with state index. */
             hmm_history(hmm, j) = state_idx;
         }
@@ -206,29 +207,33 @@ state_align_search_finish(ps_search_t *search)
     hmm_t *final_phone = sas->hmms + sas->n_phones - 1;
     ps_alignment_iter_t *itor;
     ps_alignment_entry_t *ent;
-    int next_state, next_start, state, frame;
 
-    /* Best state exiting the last frame. */
-    next_state = state = hmm_out_history(final_phone);
-    if (state == 0xffff) {
+    int last_frame, cur_frame;
+    state_align_hist_t last, cur;
+
+    /* Best state exiting the last cur_frame. */
+    last.id = cur.id = hmm_out_history(final_phone);
+    last.score = hmm_out_score(final_phone);
+    if (last.score == 0xffff) {
         E_ERROR("Failed to reach final state in alignment\n");
         return -1;
     }
     itor = ps_alignment_states(sas->al);
-    next_start = sas->frame + 1;
-    for (frame = sas->frame - 1; frame >= 0; --frame) {
-        state = sas->tokens[frame * sas->n_emit_state + state];
+    last_frame = sas->frame + 1;
+    for (cur_frame = sas->frame - 1; cur_frame >= 0; --cur_frame) {
+	cur = sas->tokens[cur_frame * sas->n_emit_state + cur.id];
         /* State boundary, update alignment entry for next state. */
-        if (state != next_state) {
-            itor = ps_alignment_iter_goto(itor, next_state);
+        if (cur.id != last.id) {
+            itor = ps_alignment_iter_goto(itor, last.id);
             assert(itor != NULL);
             ent = ps_alignment_iter_get(itor);
-            ent->start = frame + 1;
-            ent->duration = next_start - ent->start;
-            E_DEBUG(1,("state %d start %d end %d\n", next_state,
-                       ent->start, next_start));
-            next_state = state;
-            next_start = frame + 1;
+            ent->start = cur_frame + 1;
+            ent->duration = last_frame - ent->start;
+            ent->score =  last.score - cur.score;
+            E_DEBUG(1,("state %d start %d end %d\n", last.id,
+                       ent->start, last_frame));
+    	    last = cur;
+            last_frame = cur_frame + 1;
         }
     }
     /* Update alignment entry for initial state. */
@@ -236,9 +241,9 @@ state_align_search_finish(ps_search_t *search)
     assert(itor != NULL);
     ent = ps_alignment_iter_get(itor);
     ent->start = 0;
-    ent->duration = next_start;
+    ent->duration = last_frame;
     E_DEBUG(1,("state %d start %d end %d\n", 0,
-               ent->start, next_start));
+               ent->start, last_frame));
     ps_alignment_iter_free(itor);
     ps_alignment_propagate(sas->al);
 
@@ -256,7 +261,7 @@ static void
 state_align_search_free(ps_search_t *search)
 {
     state_align_search_t *sas = (state_align_search_t *)search;
-    ps_search_deinit(search);
+    ps_search_base_free(search);
     ckd_free(sas->hmms);
     ckd_free(sas->tokens);
     hmm_context_free(sas->hmmctx);
@@ -264,7 +269,6 @@ state_align_search_free(ps_search_t *search)
 }
 
 static ps_searchfuncs_t state_align_search_funcs = {
-    /* name: */   "state_align",
     /* start: */  state_align_search_start,
     /* step: */   state_align_search_step,
     /* finish: */ state_align_search_finish,
@@ -277,7 +281,8 @@ static ps_searchfuncs_t state_align_search_funcs = {
 };
 
 ps_search_t *
-state_align_search_init(cmd_ln_t *config,
+state_align_search_init(const char *name,
+                        cmd_ln_t *config,
                         acmod_t *acmod,
                         ps_alignment_t *al)
 {
@@ -287,6 +292,7 @@ state_align_search_init(cmd_ln_t *config,
 
     sas = ckd_calloc(1, sizeof(*sas));
     ps_search_init(ps_search_base(sas), &state_align_search_funcs,
+		   PS_SEARCH_TYPE_STATE_ALIGN, name,
                    config, acmod, al->d2p->dict, al->d2p);
     sas->hmmctx = hmm_context_init(bin_mdef_n_emit_state(acmod->mdef),
                                    acmod->tmat->tp, NULL, acmod->mdef->sseq);

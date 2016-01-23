@@ -88,8 +88,8 @@ ps_default_search_args(cmd_ln_t *);
  * Initialize the decoder from a configuration object.
  *
  * @note The decoder retains ownership of the pointer
- * <code>config</code>, so you must not attempt to free it manually.
- * If you wish to reuse it elsewhere, call cmd_ln_retain() on it.
+ * <code>config</code>, so if you are not going to use it
+ * elsewere, you can free it.
  *
  * @param config a command-line structure, as created by
  * cmd_ln_parse_r() or cmd_ln_parse_file_r().
@@ -290,26 +290,23 @@ char *ps_lookup_word(ps_decoder_t *ps,
  *
  * @param ps Decoder.
  * @param rawfh Previously opened file stream.
- * @param uttid Utterance ID (or NULL to generate automatically).
  * @param maxsamps Maximum number of samples to read from rawfh, or -1
  *                 to read until end-of-file.
  * @return Number of samples of audio.
  */
 POCKETSPHINX_EXPORT
-int ps_decode_raw(ps_decoder_t *ps, FILE *rawfh,
-                  char const *uttid, long maxsamps);
+long ps_decode_raw(ps_decoder_t *ps, FILE *rawfh,
+                   long maxsamps);
 
 /**
  * Decode a senone score dump file.
  *
  * @param ps Decoder
  * @param fh Previously opened file handle positioned at start of file.
- * @param uttid Utterance ID (or NULL to generate automatically).
  * @return Number of frames read.
  */
 POCKETSPHINX_EXPORT
-int ps_decode_senscr(ps_decoder_t *ps, FILE *senfh,
-                     char const *uttid);
+int ps_decode_senscr(ps_decoder_t *ps, FILE *senfh);
 
 /**
  * Start processing of the stream of speech. Channel parameters like
@@ -329,22 +326,10 @@ int ps_start_stream(ps_decoder_t *ps);
  * reinitializes internal data structures.
  *
  * @param ps Decoder to be started.
- * @param uttid String uniquely identifying this utterance.  If NULL,
- *              one will be created.
  * @return 0 for success, <0 on error.
  */
 POCKETSPHINX_EXPORT
-int ps_start_utt(ps_decoder_t *ps, char const *uttid);
-
-/**
- * Get current utterance ID.
- *
- * @param ps Decoder to query.
- * @return Read-only string of the current utterance ID.  This is
- * valid only until the beginning of the next utterance.
- */
-POCKETSPHINX_EXPORT
-char const *ps_get_uttid(ps_decoder_t *ps);
+int ps_start_utt(ps_decoder_t *ps);
 
 /**
  * Decode raw audio data.
@@ -416,13 +401,11 @@ int ps_end_utt(ps_decoder_t *ps);
  *
  * @param ps Decoder.
  * @param out_best_score Output: path score corresponding to returned string.
- * @param out_uttid Output: utterance ID for this utterance.
  * @return String containing best hypothesis at this point in
  *         decoding.  NULL if no hypothesis is available.
  */
 POCKETSPHINX_EXPORT
-char const *ps_get_hyp(ps_decoder_t *ps, int32 *out_best_score,
-                       char const **out_uttid);
+char const *ps_get_hyp(ps_decoder_t *ps, int32 *out_best_score);
 
 /**
  * Get hypothesis string and final flag.
@@ -446,11 +429,10 @@ char const *ps_get_hyp_final(ps_decoder_t *ps, int32 *out_is_final);
  * restrictions being lifted in future versions.
  *
  * @param ps Decoder.
- * @param out_uttid Output: utterance ID for this utterance.
  * @return Posterior probability of the best hypothesis.
  */
 POCKETSPHINX_EXPORT
-int32 ps_get_prob(ps_decoder_t *ps, char const **out_uttid);
+int32 ps_get_prob(ps_decoder_t *ps);
 
 /**
  * Get word lattice.
@@ -472,12 +454,11 @@ ps_lattice_t *ps_get_lattice(ps_decoder_t *ps);
  * Get an iterator over the word segmentation for the best hypothesis.
  *
  * @param ps Decoder.
- * @param out_best_score Output: path score corresponding to hypothesis.
  * @return Iterator over the best hypothesis at this point in
  *         decoding.  NULL if no hypothesis is available.
  */
 POCKETSPHINX_EXPORT
-ps_seg_t *ps_seg_iter(ps_decoder_t *ps, int32 *out_best_score);
+ps_seg_t *ps_seg_iter(ps_decoder_t *ps);
 
 /**
  * Get the next segment in a word segmentation.
@@ -545,22 +526,15 @@ POCKETSPHINX_EXPORT
 void ps_seg_free(ps_seg_t *seg);
 
 /**
- * Get an iterator over the best hypotheses, optionally within a
- * selected region of the utterance. Iterator is empty now, it must
- * be advanced with ps_nbest_next first. The function may also
+ * Get an iterator over the best hypotheses. The function may also
  * return a NULL which means that there is no hypothesis available for this
  * utterance.
  *
  * @param ps Decoder.
- * @param sf Start frame for N-best search (0 for whole utterance) 
- * @param ef End frame for N-best search (-1 for whole utterance) 
- * @param ctx1 First word of trigram context (NULL for whole utterance)
- * @param ctx2 First word of trigram context (NULL for whole utterance)
  * @return Iterator over N-best hypotheses or NULL if no hypothesis is available
  */
 POCKETSPHINX_EXPORT
-ps_nbest_t *ps_nbest(ps_decoder_t *ps, int sf, int ef,
-                     char const *ctx1, char const *ctx2);
+ps_nbest_t *ps_nbest(ps_decoder_t *ps);
 
 /**
  * Move an N-best list iterator forward.
@@ -590,7 +564,7 @@ char const *ps_nbest_hyp(ps_nbest_t *nbest, int32 *out_score);
  * @return Iterator over the next best hypothesis.
  */
 POCKETSPHINX_EXPORT
-ps_seg_t *ps_nbest_seg(ps_nbest_t *nbest, int32 *out_score);
+ps_seg_t *ps_nbest_seg(ps_nbest_t *nbest);
 
 /**
  * Finish N-best search early, releasing resources.
@@ -633,11 +607,35 @@ void ps_get_all_time(ps_decoder_t *ps, double *out_nspeech,
 POCKETSPHINX_EXPORT
 uint8 ps_get_in_speech(ps_decoder_t *ps);
 
+
+/**
+ * Sets the limit of the raw audio data to store in decoder
+ * to retrieve it later on ps_get_rawdata.
+ *
+ * @param ps Decoder
+ * @param size bytes of the utterance to store
+ */
+POCKETSPHINX_EXPORT
+void ps_set_rawdata_size(ps_decoder_t *ps, int32 size);
+
+
+/**
+ * Retrieves the raw data collected during utterance decoding.
+ * 
+ * @param ps Decoder
+ * @param buffer preallocated buffer to store the data, must be within the limit
+ * set before
+ * @param size size of the data collected in samples (not bytes).
+ */
+POCKETSPHINX_EXPORT
+void ps_get_rawdata(ps_decoder_t *ps, int16 **buffer, int32 *size);
+
 /**
  * @mainpage PocketSphinx API Documentation
  * @author David Huggins-Daines <dhuggins@cs.cmu.edu>
- * @version 0.6
- * @date March, 2010
+ * @author Alpha Cephei Inc.
+ * @version 5prealpha
+ * @date July, 2015
  *
  * @section intro_sec Introduction
  *

@@ -241,7 +241,8 @@ static void
 arg_dump_r(cmd_ln_t *cmdln, FILE *fp, const arg_t * defn, int32 doc)
 {
     arg_t const **pos;
-    int32 i, l, n;
+    int32 i, n;
+    size_t l;
     int32 namelen, deflen;
     anytype_t *vp;
     char const **array;
@@ -684,27 +685,10 @@ cmd_ln_parse_r(cmd_ln_t *inout_cmdln, const arg_t * defn, int32 argc, char *argv
         return NULL;
     }
 
-#ifndef _WIN32_WCE
-    /* Set up logging. We need to do this earlier because we want to dump
-     * the information to the configured log, not to the stderr. */
-    if (cmd_ln_exists_r(cmdln, "-logfn") && cmd_ln_str_r(cmdln, "-logfn")) {
-        if (err_set_logfile(cmd_ln_str_r(cmdln, "-logfn")) < 0)
-            E_FATAL_SYSTEM("cannot redirect log output");
+    /* If we use it from something except pocketsphinx, print current values */
+    if (!cmd_ln_exists_r(cmdln, "-logfn") && err_get_logfp()) {
+	cmd_ln_print_values_r(cmdln, err_get_logfp(), defn);
     }
-
-    /* Echo command line */
-    E_INFO("Parsing command line:\n");
-    for (i = 0; i < argc; i++) {
-        if (argv[i][0] == '-')
-            E_INFOCONT("\\\n\t");
-        E_INFOCONT("%s ", argv[i]);
-    }
-    E_INFOCONT("\n\n");
-
-    /* Print configuration */
-    E_INFOCONT("Current configuration:\n");
-    arg_dump_r(cmdln, err_get_logfp(), defn, 0);
-#endif
 
     hash_table_free(defidx);
     return cmdln;
@@ -925,7 +909,16 @@ cmd_ln_print_help_r(cmd_ln_t *cmdln, FILE *fp, arg_t const* defn)
     if (defn == NULL)
         return;
     fprintf(fp, "Arguments list definition:\n");
-    arg_dump_r(cmdln, fp, defn, 1);
+    arg_dump_r(cmdln, fp, defn, TRUE);
+}
+
+void
+cmd_ln_print_values_r(cmd_ln_t *cmdln, FILE *fp, arg_t const* defn)
+{
+    if (defn == NULL)
+        return;
+    fprintf(fp, "Current configuration:\n");
+    arg_dump_r(cmdln, fp, defn, FALSE);
 }
 
 int
@@ -998,10 +991,20 @@ cmd_ln_set_str_r(cmd_ln_t *cmdln, char const *name, char const *str)
         return;
     }
     ckd_free(val->ptr);
-    if (str == NULL)
-        val->ptr = NULL;
-    else
+    val->ptr = ckd_salloc(str);
+}
+
+void
+cmd_ln_set_str_extra_r(cmd_ln_t *cmdln, char const *name, char const *str)
+{
+    anytype_t *val;
+    if (hash_table_lookup(cmdln->ht, name, (void **)&val) < 0) {
+	val = (anytype_t *)cmd_ln_val_init(ARG_STRING, str);
+	hash_table_enter(cmdln->ht, name, (void *)val);
+    } else {
+        ckd_free(val->ptr);
         val->ptr = ckd_salloc(str);
+    }
 }
 
 void

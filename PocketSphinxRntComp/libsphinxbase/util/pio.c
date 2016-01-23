@@ -35,21 +35,30 @@
  *
  */
 
+#ifdef HAVE_CONFIG_H
 #include <config.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
+
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#include <assert.h>
+
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif
+
+#if defined(_WIN32) && !defined(CYGWIN)
+#include <direct.h>
+#endif
 
 #include "sphinxbase/pio.h"
 #include "sphinxbase/filename.h"
@@ -71,7 +80,7 @@ enum {
 static void
 guess_comptype(char const *file, int32 *ispipe, int32 *isgz)
 {
-    int k;
+    size_t k;
 
     k = strlen(file);
     *ispipe = 0;
@@ -204,7 +213,7 @@ fopen_compchk(const char *file, int32 * ispipe)
         return fh;
     else {
         char *tmpfile;
-        int k;
+        size_t k;
 
         /* File doesn't exist; try other compressed/uncompressed form, as appropriate */
         guess_comptype(file, ispipe, &isgz);
@@ -310,7 +319,7 @@ lineiter_next_plain(lineiter_t *li)
     }
     /* If we managed to read the whole thing, then we are done
      * (this will be by far the most common result). */
-    li->len = strlen(li->buf);
+    li->len = (int32)strlen(li->buf);
     if (li->len < li->bsiz - 1 || li->buf[li->len - 1] == '\n')
         return li;
 
@@ -398,8 +407,8 @@ int32
 fread_retry(void *pointer, int32 size, int32 num_items, FILE * stream)
 {
     char *data;
-    uint32 n_items_read;
-    uint32 n_items_rem;
+    size_t n_items_read;
+    size_t n_items_rem;
     uint32 n_retry_rem;
     int32 loc;
 
@@ -454,7 +463,7 @@ stat_retry(const char *file, struct stat * statbuf)
         return -1;
     }
     ckd_free(wfile);
-    memset(statbuf, 0, sizeof(statbuf));
+    memset(statbuf, 0, sizeof(*statbuf));
     statbuf->st_mtime = file_data.ftLastWriteTime.dwLowDateTime;
     statbuf->st_size = file_data.nFileSizeLow;
     FindClose(h);
@@ -480,21 +489,16 @@ stat_retry(const char *file, struct stat * statbuf)
 {
     int32 i;
 
-    
-    
     for (i = 0; i < STAT_RETRY_COUNT; i++) {
-
 #ifndef HAVE_SYS_STAT_H
-		FILE *fp;
+	FILE *fp;
 
-		if ((fp=(FILE *)fopen(file, "r"))!= 0)
-		{
-		    fseek( fp, 0, SEEK_END);
-		    statbuf->st_size = ftell( fp );
-		    fclose(fp);
-		    return 0;
-		}
-	
+	if ((fp = (FILE *)fopen(file, "r")) != 0) {
+	    fseek(fp, 0, SEEK_END);
+	    statbuf->st_size = ftell(fp);
+	    fclose(fp);
+	    return 0;
+	}
 #else /* HAVE_SYS_STAT_H */
         if (stat(file, statbuf) == 0)
             return 0;
@@ -612,15 +616,6 @@ bit_encode_flush(bit_encode_t *be)
     return 0;
 }
 
-#if defined(_WIN32) && !defined(CYGWIN)
-/* FIXME: Implement this. */
-int
-build_directory(const char *path)
-{
-    E_ERROR("build_directory() unimplemented on your platform!\n");
-    return -1;
-}
-#elif defined(HAVE_SYS_STAT_H) /* Unix, Cygwin, doesn't work on MINGW */
 int
 build_directory(const char *path)
 {
@@ -629,14 +624,20 @@ build_directory(const char *path)
     /* Utterly failed... */
     if (strlen(path) == 0)
         return -1;
-    /* Utterly succeeded... */
+
+#if defined(_WIN32) && !defined(CYGWIN)
+    else if ((rv = _mkdir(path)) == 0)
+        return 0;
+#elif defined(HAVE_SYS_STAT_H) /* Unix, Cygwin, doesn't work on MINGW */
     else if ((rv = mkdir(path, 0777)) == 0)
         return 0;
+#endif
+
     /* Or, it already exists... */
     else if (errno == EEXIST)
         return 0;
     else if (errno != ENOENT) {
-        E_ERROR_SYSTEM("Failed to create %s");
+        E_ERROR_SYSTEM("Failed to create %s", path);
         return -1;
     }
     else {
@@ -644,15 +645,11 @@ build_directory(const char *path)
         path2dirname(path, dirname);
         build_directory(dirname);
         ckd_free(dirname);
+
+#if defined(_WIN32) && !defined(CYGWIN)
+	return _mkdir(path);
+#elif defined(HAVE_SYS_STAT_H) /* Unix, Cygwin, doesn't work on MINGW */
         return mkdir(path, 0777);
+#endif
     }
 }
-
-#else
-int
-build_directory(const char *path)
-{
-    E_ERROR("build_directory() unimplemented on your platform!\n");
-    return -1;
-}
-#endif

@@ -40,14 +40,12 @@
  * Author: David Huggins-Daines, much code taken from sphinx3/src/libs3decoder/liblm
  */
 
+#ifdef HAVE_CONFIG_H
 #include <config.h>
+#endif
 
 #include <string.h>
 #include <assert.h>
-
-#ifdef HAVE_ICONV
-#include <iconv.h>
-#endif 
 
 #include "sphinxbase/ngram_model.h"
 #include "sphinxbase/ckd_alloc.h"
@@ -59,6 +57,7 @@
 #include "sphinxbase/case.h"
 
 #include "ngram_model_internal.h"
+#include "ngram_model_trie.h"
 
 ngram_file_type_t
 ngram_file_name_to_type(const char *file_name)
@@ -71,35 +70,39 @@ ngram_file_name_to_type(const char *file_name)
     }
     if (0 == strcmp_nocase(ext, ".gz")) {
         while (--ext >= file_name) {
-            if (*ext == '.') break;
+            if (*ext == '.')
+                break;
         }
         if (ext < file_name) {
             return NGRAM_INVALID;
-         }
-     }
-     else if (0 == strcmp_nocase(ext, ".bz2")) {
-         while (--ext >= file_name) {
-             if (*ext == '.') break;
-         }
-         if (ext < file_name) {
-             return NGRAM_INVALID;
-         }
-     }
-     /* We use strncmp because there might be a .gz on the end. */
-     if (0 == strncmp_nocase(ext, ".ARPA", 5))
-         return NGRAM_ARPA;
-     if (0 == strncmp_nocase(ext, ".DMP", 4))
-         return NGRAM_DMP;
-     return NGRAM_INVALID;
- }
+        }
+    }
+    else if (0 == strcmp_nocase(ext, ".bz2")) {
+        while (--ext >= file_name) {
+            if (*ext == '.')
+                break;
+        }
+        if (ext < file_name) {
+            return NGRAM_INVALID;
+        }
+    }
+    /* We use strncmp because there might be a .gz on the end. */
+    if (0 == strncmp_nocase(ext, ".ARPA", 5))
+        return NGRAM_ARPA;
+    if (0 == strncmp_nocase(ext, ".DMP", 4)
+        || 0 == strncmp_nocase(ext, ".BIN", 4))
+        return NGRAM_BIN;
+    return NGRAM_INVALID;
+}
 
 ngram_file_type_t
 ngram_str_to_type(const char *str_name)
 {
     if (0 == strcmp_nocase(str_name, "arpa"))
         return NGRAM_ARPA;
-    if (0 == strcmp_nocase(str_name, "dmp"))
-        return NGRAM_DMP;
+    if (0 == strcmp_nocase(str_name, "dmp")
+        || 0 == strcmp_nocase(str_name, "bin"))
+        return NGRAM_BIN;
     return NGRAM_INVALID;
 }
 
@@ -109,104 +112,108 @@ ngram_type_to_str(int type)
     switch (type) {
     case NGRAM_ARPA:
         return "arpa";
-    case NGRAM_DMP:
-        return "dmp";
+    case NGRAM_BIN:
+        return "dmp/bin";
     default:
         return NULL;
     }
 }
 
 
- ngram_model_t *
- ngram_model_read(cmd_ln_t *config,
-                  const char *file_name,
-                  ngram_file_type_t file_type,
-                  logmath_t *lmath)
- {
-     ngram_model_t *model = NULL;
+ngram_model_t *
+ngram_model_read(cmd_ln_t * config,
+                 const char *file_name,
+                 ngram_file_type_t file_type, logmath_t * lmath)
+{
+    ngram_model_t *model = NULL;
+    switch (file_type) {
+    case NGRAM_AUTO:{
+            if ((model =
+                 ngram_model_trie_read_bin(config, file_name,
+                                           lmath)) != NULL)
+                break;
+            if ((model =
+                 ngram_model_trie_read_arpa(config, file_name,
+                                            lmath)) != NULL)
+                break;
+            if ((model =
+                 ngram_model_trie_read_dmp(config, file_name,
+                                           lmath)) != NULL)
+                break;
+            return NULL;
+        }
+    case NGRAM_ARPA:
+        model = ngram_model_trie_read_arpa(config, file_name, lmath);
+        break;
+    case NGRAM_BIN:
+        if ((model =
+             ngram_model_trie_read_bin(config, file_name, lmath)) != NULL)
+            break;
+        if ((model =
+             ngram_model_trie_read_dmp(config, file_name, lmath)) != NULL)
+            break;
+        return NULL;
+    default:
+        E_ERROR("language model file type not supported\n");
+        return NULL;
+    }
 
-     switch (file_type) {
-     case NGRAM_AUTO: {
-         if ((model = ngram_model_arpa_read(config, file_name, lmath)) != NULL)
-             break;
-         if ((model = ngram_model_dmp_read(config, file_name, lmath)) != NULL)
-             break;
-         return NULL;
-     }
-     case NGRAM_ARPA:
-         model = ngram_model_arpa_read(config, file_name, lmath);
-         break;
-     case NGRAM_DMP:
-         model = ngram_model_dmp_read(config, file_name, lmath);
-         break;
-     default:
-         E_ERROR("language model file type not supported\n");
-         return NULL;
-     }
+    /* Now set weights based on config if present. */
+    if (config) {
+        float32 lw = 1.0;
+        float32 wip = 1.0;
 
-     /* Now set weights based on config if present. */
-     if (config) {
-         float32 lw = 1.0;
-         float32 wip = 1.0;
-         float32 uw = 1.0;
+        if (cmd_ln_exists_r(config, "-lw"))
+            lw = cmd_ln_float32_r(config, "-lw");
+        if (cmd_ln_exists_r(config, "-wip"))
+            wip = cmd_ln_float32_r(config, "-wip");
 
-         if (cmd_ln_exists_r(config, "-lw"))
-             lw = cmd_ln_float32_r(config, "-lw");
-         if (cmd_ln_exists_r(config, "-wip"))
-             wip = cmd_ln_float32_r(config, "-wip");
-         if (cmd_ln_exists_r(config, "-uw"))
-             uw = cmd_ln_float32_r(config, "-uw");
+        ngram_model_apply_weights(model, lw, wip);
+    }
 
-         ngram_model_apply_weights(model, lw, wip, uw);
-     }
+    return model;
+}
 
-     return model;
- }
+int
+ngram_model_write(ngram_model_t * model, const char *file_name,
+                  ngram_file_type_t file_type)
+{
+    switch (file_type) {
+    case NGRAM_AUTO:{
+            file_type = ngram_file_name_to_type(file_name);
+            /* Default to ARPA (catches .lm and other things) */
+            if (file_type == NGRAM_INVALID)
+                file_type = NGRAM_ARPA;
+            return ngram_model_write(model, file_name, file_type);
+        }
+    case NGRAM_ARPA:
+        return ngram_model_trie_write_arpa(model, file_name);
+    case NGRAM_BIN:
+        return ngram_model_trie_write_bin(model, file_name);
+    default:
+        E_ERROR("language model file type not supported\n");
+        return -1;
+    }
+    E_ERROR("language model file type not supported\n");
+    return -1;
+}
 
- int
- ngram_model_write(ngram_model_t *model, const char *file_name,
-                   ngram_file_type_t file_type)
- {
-     switch (file_type) {
-     case NGRAM_AUTO: {
-         file_type = ngram_file_name_to_type(file_name);
-         /* Default to ARPA (catches .lm and other things) */
-         if (file_type == NGRAM_INVALID)
-             file_type = NGRAM_ARPA;
-         return ngram_model_write(model, file_name, file_type);
-     }
-     case NGRAM_ARPA:
-         return ngram_model_arpa_write(model, file_name);
-     case NGRAM_DMP:
-         return ngram_model_dmp_write(model, file_name);
-     default:
-         E_ERROR("language model file type not supported\n");
-         return -1;
-     }
-     E_ERROR("language model file type not supported\n");
-     return -1;
- }
-
- int32
- ngram_model_init(ngram_model_t *base,
-                  ngram_funcs_t *funcs,
-                  logmath_t *lmath,
-                  int32 n, int32 n_unigram)
- {
-     base->refcount = 1;
-     base->funcs = funcs;
-     base->n = n;
-     /* If this was previously initialized... */
+int32
+ngram_model_init(ngram_model_t * base,
+                 ngram_funcs_t * funcs,
+                 logmath_t * lmath, int32 n, int32 n_unigram)
+{
+    base->refcount = 1;
+    base->funcs = funcs;
+    base->n = n;
+    /* If this was previously initialized... */
     if (base->n_counts == NULL)
-        base->n_counts = ckd_calloc(3, sizeof(*base->n_counts));
+        base->n_counts = (uint32 *) ckd_calloc(n, sizeof(*base->n_counts));
     /* Don't reset weights if logmath object hasn't changed. */
     if (base->lmath != lmath) {
         /* Set default values for weights. */
         base->lw = 1.0;
-        base->log_wip = 0; /* i.e. 1.0 */
-        base->log_uw = 0;  /* i.e. 1.0 */
-        base->log_uniform = logmath_log(lmath, 1.0 / n_unigram);
-        base->log_uniform_weight = logmath_get_zero(lmath);
+        base->log_wip = 0;      /* i.e. 1.0 */
         base->log_zero = logmath_get_zero(lmath);
         base->lmath = lmath;
     }
@@ -220,10 +227,13 @@ ngram_type_to_str(int type)
                 base->word_str[i] = NULL;
             }
         }
-        base->word_str = ckd_realloc(base->word_str, n_unigram * sizeof(char *));
+        base->word_str =
+            (char **) ckd_realloc(base->word_str,
+                                  n_unigram * sizeof(char *));
     }
-    else
-        base->word_str = ckd_calloc(n_unigram, sizeof(char *));
+    else {
+        base->word_str = (char **) ckd_calloc(n_unigram, sizeof(char *));
+    }
     /* NOTE: They are no longer case-insensitive since we are allowing
      * other encodings for word strings.  Beware. */
     if (base->wid)
@@ -236,22 +246,21 @@ ngram_type_to_str(int type)
 }
 
 ngram_model_t *
-ngram_model_retain(ngram_model_t *model)
+ngram_model_retain(ngram_model_t * model)
 {
     ++model->refcount;
     return model;
 }
 
-
 void
-ngram_model_flush(ngram_model_t *model)
+ngram_model_flush(ngram_model_t * model)
 {
     if (model->funcs && model->funcs->flush)
-        (*model->funcs->flush)(model);
+        (*model->funcs->flush) (model);
 }
 
 int
-ngram_model_free(ngram_model_t *model)
+ngram_model_free(ngram_model_t * model)
 {
     int i;
 
@@ -260,7 +269,7 @@ ngram_model_free(ngram_model_t *model)
     if (--model->refcount > 0)
         return model->refcount;
     if (model->funcs && model->funcs->free)
-        (*model->funcs->free)(model);
+        (*model->funcs->free) (model);
     if (model->writable) {
         /* Free all words. */
         for (i = 0; i < model->n_words; ++i) {
@@ -296,7 +305,7 @@ ngram_model_free(ngram_model_t *model)
 }
 
 int
-ngram_model_casefold(ngram_model_t *model, int kase)
+ngram_model_casefold(ngram_model_t * model, int kase)
 {
     int writable, i;
     hash_table_t *new_wid;
@@ -347,152 +356,24 @@ ngram_model_casefold(ngram_model_t *model, int kase)
     return 0;
 }
 
-#ifdef HAVE_ICONV
 int
-ngram_model_recode(ngram_model_t *model, const char *from, const char *to)
+ngram_model_apply_weights(ngram_model_t * model, float32 lw, float32 wip)
 {
-    iconv_t ic;
-    char *outbuf;
-    size_t maxlen;
-    int i, writable;
-    hash_table_t *new_wid;
-
-    /* FIXME: Need to do a special case thing for the GB-HEX encoding
-     * used in Sphinx3 Mandarin models. */
-    if ((ic = iconv_open(to, from)) == (iconv_t)-1) {
-        E_ERROR_SYSTEM("iconv_open() failed");
-        return -1;
-    }
-    /* iconv(3) is a piece of crap and won't accept a NULL out buffer,
-     * unlike wcstombs(3). So we have to either call it over and over
-     * again until our buffer is big enough, or call it with a huge
-     * buffer and then copy things back to the output.  We will use a
-     * mix of these two approaches here.  We'll keep a single big
-     * buffer around, and expand it as necessary.
-     */
-    maxlen = 0;
-    for (i = 0; i < model->n_words; ++i) {
-        if (strlen(model->word_str[i]) > maxlen)
-            maxlen = strlen(model->word_str[i]);
-    }
-    /* Were word strings already allocated? */
-    writable = model->writable;
-    /* Either way, we are going to allocate some word strings. */
-    model->writable = TRUE;
-    /* Really should be big enough except for pathological cases. */
-    maxlen = maxlen * sizeof(int) + 15;
-    outbuf = ckd_calloc(maxlen, 1);
-    /* And, don't forget, we need to rebuild the word to unigram ID
-     * mapping. */
-    new_wid = hash_table_new(model->n_words, FALSE);
-    for (i = 0; i < model->n_words; ++i) {
-        ICONV_CONST char *in;
-        char *out;
-        size_t inleft, outleft, result;
-
-    start_conversion:
-        in = (ICONV_CONST char *)model->word_str[i];
-        /* Yes, this assumes that we don't have any NUL bytes. */
-        inleft = strlen(in);
-        out = outbuf;
-        outleft = maxlen;
-
-        while ((result = iconv(ic, &in, &inleft, &out, &outleft)) == (size_t)-1) {
-            if (errno != E2BIG) {
-                /* FIXME: if we already converted any words, then they
-                 * are going to be in an inconsistent state. */
-                E_ERROR_SYSTEM("iconv() failed");
-                ckd_free(outbuf);
-                hash_table_free(new_wid);
-                return -1;
-            }
-            /* Reset the internal state of conversion. */
-            iconv(ic, NULL, NULL, NULL, NULL);
-            /* Make everything bigger. */
-            maxlen *= 2;
-            out = outbuf = ckd_realloc(outbuf, maxlen);
-            /* Reset the input pointers. */
-            in = (ICONV_CONST char *)model->word_str[i];
-            inleft = strlen(in);
-        }
-
-        /* Now flush a shift-out sequence, if any. */
-        if ((result = iconv(ic, NULL, NULL, &out, &outleft)) == (size_t)-1) {
-            if (errno != E2BIG) {
-                /* FIXME: if we already converted any words, then they
-                 * are going to be in an inconsistent state. */
-                E_ERROR_SYSTEM("iconv() failed (state reset sequence)");
-                ckd_free(outbuf);
-                hash_table_free(new_wid);
-                return -1;
-            }
-            /* Reset the internal state of conversion. */
-            iconv(ic, NULL, NULL, NULL, NULL);
-            /* Make everything bigger. */
-            maxlen *= 2;
-            outbuf = ckd_realloc(outbuf, maxlen);
-            /* Be very evil. */
-            goto start_conversion;
-        }
-
-        result = maxlen - outleft;
-        /* Okay, that was hard, now let's go shopping. */
-        if (writable) {
-            /* Grow or shrink the output string as necessary. */
-            model->word_str[i] = ckd_realloc(model->word_str[i], result + 1);
-            model->word_str[i][result] = '\0';
-        }
-        else {
-            /* It actually was not allocated previously, so do that now. */
-            model->word_str[i] = ckd_calloc(result + 1, 1);
-        }
-        /* Copy the new thing in. */
-        memcpy(model->word_str[i], outbuf, result);
-
-        /* Now update the hash table.  We might have terrible
-         * collisions if a non-reversible conversion was requested.,
-         * so warn about them. */
-        if (hash_table_enter_int32(new_wid, model->word_str[i], i) != i) {
-            E_WARN("Duplicate word in dictionary after conversion: %s\n",
-                   model->word_str[i]);
-        }
-    }
-    ckd_free(outbuf);
-    iconv_close(ic);
-    /* Swap out the hash table. */
-    hash_table_free(model->wid);
-    model->wid = new_wid;
-
-    return 0;
-}
-#else /* !HAVE_ICONV */
-int
-ngram_model_recode(ngram_model_t *model, const char *from, const char *to)
-{
-    return -1;
-}
-#endif /* !HAVE_ICONV */
-
-int
-ngram_model_apply_weights(ngram_model_t *model,
-                          float32 lw, float32 wip, float32 uw)
-{
-    return (*model->funcs->apply_weights)(model, lw, wip, uw);
+    return (*model->funcs->apply_weights) (model, lw, wip);
 }
 
 float32
-ngram_model_get_weights(ngram_model_t *model, int32 *out_log_wip,
-                        int32 *out_log_uw)
+ngram_model_get_weights(ngram_model_t * model, int32 * out_log_wip)
 {
-    if (out_log_wip) *out_log_wip = model->log_wip;
-    if (out_log_uw) *out_log_uw = model->log_uw;
+    if (out_log_wip)
+        *out_log_wip = model->log_wip;
     return model->lw;
 }
 
 
 int32
-ngram_ng_score(ngram_model_t *model, int32 wid, int32 *history,
-               int32 n_hist, int32 *n_used)
+ngram_ng_score(ngram_model_t * model, int32 wid, int32 * history,
+               int32 n_hist, int32 * n_used)
 {
     int32 score, class_weight = 0;
     int i;
@@ -506,22 +387,24 @@ ngram_ng_score(ngram_model_t *model, int32 wid, int32 *history,
         ngram_class_t *lmclass = model->classes[NGRAM_CLASSID(wid)];
 
         class_weight = ngram_class_prob(lmclass, wid);
-        if (class_weight == 1) /* Meaning, not found in class. */
+        if (class_weight == 1)  /* Meaning, not found in class. */
             return model->log_zero;
         wid = lmclass->tag_wid;
     }
     for (i = 0; i < n_hist; ++i) {
-        if (history[i] != NGRAM_INVALID_WID && NGRAM_IS_CLASSWID(history[i]))
-            history[i] = model->classes[NGRAM_CLASSID(history[i])]->tag_wid;
+        if (history[i] != NGRAM_INVALID_WID
+            && NGRAM_IS_CLASSWID(history[i]))
+            history[i] =
+                model->classes[NGRAM_CLASSID(history[i])]->tag_wid;
     }
-    score = (*model->funcs->score)(model, wid, history, n_hist, n_used);
+    score = (*model->funcs->score) (model, wid, history, n_hist, n_used);
 
     /* Multiply by unigram in-class weight. */
     return score + class_weight;
 }
 
 int32
-ngram_score(ngram_model_t *model, const char *word, ...)
+ngram_score(ngram_model_t * model, const char *word, ...)
 {
     va_list history;
     const char *hword;
@@ -552,7 +435,8 @@ ngram_score(ngram_model_t *model, const char *word, ...)
 }
 
 int32
-ngram_tg_score(ngram_model_t *model, int32 w3, int32 w2, int32 w1, int32 *n_used)
+ngram_tg_score(ngram_model_t * model, int32 w3, int32 w2, int32 w1,
+               int32 * n_used)
 {
     int32 hist[2];
     hist[0] = w2;
@@ -561,14 +445,14 @@ ngram_tg_score(ngram_model_t *model, int32 w3, int32 w2, int32 w1, int32 *n_used
 }
 
 int32
-ngram_bg_score(ngram_model_t *model, int32 w2, int32 w1, int32 *n_used)
+ngram_bg_score(ngram_model_t * model, int32 w2, int32 w1, int32 * n_used)
 {
     return ngram_ng_score(model, w2, &w1, 1, n_used);
 }
 
 int32
-ngram_ng_prob(ngram_model_t *model, int32 wid, int32 *history,
-              int32 n_hist, int32 *n_used)
+ngram_ng_prob(ngram_model_t * model, int32 wid, int32 * history,
+              int32 n_hist, int32 * n_used)
 {
     int32 prob, class_weight = 0;
     int i;
@@ -582,22 +466,24 @@ ngram_ng_prob(ngram_model_t *model, int32 wid, int32 *history,
         ngram_class_t *lmclass = model->classes[NGRAM_CLASSID(wid)];
 
         class_weight = ngram_class_prob(lmclass, wid);
-        if (class_weight == 1) /* Meaning, not found in class. */
+        if (class_weight == 1)  /* Meaning, not found in class. */
             return class_weight;
         wid = lmclass->tag_wid;
     }
     for (i = 0; i < n_hist; ++i) {
-        if (history[i] != NGRAM_INVALID_WID && NGRAM_IS_CLASSWID(history[i]))
-            history[i] = model->classes[NGRAM_CLASSID(history[i])]->tag_wid;
+        if (history[i] != NGRAM_INVALID_WID
+            && NGRAM_IS_CLASSWID(history[i]))
+            history[i] =
+                model->classes[NGRAM_CLASSID(history[i])]->tag_wid;
     }
-    prob = (*model->funcs->raw_score)(model, wid, history,
-                                      n_hist, n_used);
+    prob = (*model->funcs->raw_score) (model, wid, history,
+                                       n_hist, n_used);
     /* Multiply by unigram in-class weight. */
     return prob + class_weight;
 }
 
 int32
-ngram_probv(ngram_model_t *model, const char *word, ...)
+ngram_probv(ngram_model_t * model, const char *word, ...)
 {
     va_list history;
     const char *hword;
@@ -628,7 +514,7 @@ ngram_probv(ngram_model_t *model, const char *word, ...)
 }
 
 int32
-ngram_prob(ngram_model_t *model, const char *const *words, size_t n)
+ngram_prob(ngram_model_t * model, const char *const *words, int32 n)
 {
     int32 *ctx_id;
     int32 nused;
@@ -636,32 +522,32 @@ ngram_prob(ngram_model_t *model, const char *const *words, size_t n)
     int32 wid;
     uint32 i;
 
-    ctx_id = (int32 *)ckd_calloc(n - 1, sizeof(*ctx_id));
-    for (i = 1; i < n; ++i)
-      ctx_id[i] = ngram_wid(model, words[i]);
+    ctx_id = (int32 *) ckd_calloc(n - 1, sizeof(*ctx_id));
+    for (i = 1; i < (uint32) n; ++i)
+        ctx_id[i - 1] = ngram_wid(model, words[i]);
 
     wid = ngram_wid(model, *words);
     prob = ngram_ng_prob(model, wid, ctx_id, n - 1, &nused);
     ckd_free(ctx_id);
-    
+
     return prob;
 }
 
 int32
-ngram_score_to_prob(ngram_model_t *base, int32 score)
+ngram_score_to_prob(ngram_model_t * base, int32 score)
 {
     int32 prob;
 
     /* Undo insertion penalty. */
     prob = score - base->log_wip;
     /* Undo language weight. */
-    prob = (int32)(prob / base->lw);
+    prob = (int32) (prob / base->lw);
 
     return prob;
 }
 
 int32
-ngram_unknown_wid(ngram_model_t *model)
+ngram_unknown_wid(ngram_model_t * model)
 {
     int32 val;
 
@@ -674,121 +560,29 @@ ngram_unknown_wid(ngram_model_t *model)
 }
 
 int32
-ngram_zero(ngram_model_t *model)
+ngram_zero(ngram_model_t * model)
 {
     return model->log_zero;
 }
 
 int32
-ngram_model_get_size(ngram_model_t *model)
+ngram_model_get_size(ngram_model_t * model)
 {
-  if (model != NULL)
-    return model->n;
-  return 0;
+    if (model != NULL)
+        return model->n;
+    return 0;
 }
 
-int32 const *
-ngram_model_get_counts(ngram_model_t *model)
+uint32 const *
+ngram_model_get_counts(ngram_model_t * model)
 {
-  if (model != NULL)
-    return model->n_counts;
-  return NULL;
-}
-
-void
-ngram_iter_init(ngram_iter_t *itor, ngram_model_t *model,
-                int m, int successor)
-{
-    itor->model = model;
-    itor->wids = ckd_calloc(model->n, sizeof(*itor->wids));
-    itor->m = m;
-    itor->successor = successor;
-}
-
-ngram_iter_t *
-ngram_model_mgrams(ngram_model_t *model, int m)
-{
-    ngram_iter_t *itor;
-    /* The fact that m=n-1 is not exactly obvious.  Prevent accidents. */
-    if (m >= model->n)
-        return NULL;
-    if (model->funcs->mgrams == NULL)
-        return NULL;
-    itor = (*model->funcs->mgrams)(model, m);
-    return itor;
-}
-
-ngram_iter_t *
-ngram_iter(ngram_model_t *model, const char *word, ...)
-{
-    va_list history;
-    const char *hword;
-    int32 *histid;
-    int32 n_hist;
-    ngram_iter_t *itor;
-
-    va_start(history, word);
-    n_hist = 0;
-    while ((hword = va_arg(history, const char *)) != NULL)
-        ++n_hist;
-    va_end(history);
-
-    histid = ckd_calloc(n_hist, sizeof(*histid));
-    va_start(history, word);
-    n_hist = 0;
-    while ((hword = va_arg(history, const char *)) != NULL) {
-        histid[n_hist] = ngram_wid(model, hword);
-        ++n_hist;
-    }
-    va_end(history);
-
-    itor = ngram_ng_iter(model, ngram_wid(model, word), histid, n_hist);
-    ckd_free(histid);
-    return itor;
-}
-
-ngram_iter_t *
-ngram_ng_iter(ngram_model_t *model, int32 wid, int32 *history, int32 n_hist)
-{
-    if (n_hist >= model->n)
-        return NULL;
-    if (model->funcs->iter == NULL)
-        return NULL;
-    return (*model->funcs->iter)(model, wid, history, n_hist);
-}
-
-ngram_iter_t *
-ngram_iter_successors(ngram_iter_t *itor)
-{
-    /* Stop when we are at the highest order N-Gram. */
-    if (itor->m == itor->model->n - 1)
-        return NULL;
-    return (*itor->model->funcs->successors)(itor);
-}
-
-int32 const *
-ngram_iter_get(ngram_iter_t *itor,
-               int32 *out_score,
-               int32 *out_bowt)
-{
-    return (*itor->model->funcs->iter_get)(itor, out_score, out_bowt);
-}
-
-ngram_iter_t *
-ngram_iter_next(ngram_iter_t *itor)
-{
-    return (*itor->model->funcs->iter_next)(itor);
-}
-
-void
-ngram_iter_free(ngram_iter_t *itor)
-{
-    ckd_free(itor->wids);
-    (*itor->model->funcs->iter_free)(itor);
+    if (model != NULL)
+        return model->n_counts;
+    return NULL;
 }
 
 int32
-ngram_wid(ngram_model_t *model, const char *word)
+ngram_wid(ngram_model_t * model, const char *word)
 {
     int32 val;
 
@@ -799,7 +593,7 @@ ngram_wid(ngram_model_t *model, const char *word)
 }
 
 const char *
-ngram_word(ngram_model_t *model, int32 wid)
+ngram_word(ngram_model_t * model, int32 wid)
 {
     /* Remove any class tag */
     wid = NGRAM_BASEWID(wid);
@@ -812,9 +606,8 @@ ngram_word(ngram_model_t *model, int32 wid)
  * Add a word to the word string and ID mapping.
  */
 int32
-ngram_add_word_internal(ngram_model_t *model,
-                        const char *word,
-                        int32 classid)
+ngram_add_word_internal(ngram_model_t * model,
+                        const char *word, int32 classid)
 {
 
     /* Check for hash collisions. */
@@ -834,15 +627,18 @@ ngram_add_word_internal(ngram_model_t *model,
     if (model->n_words >= model->n_1g_alloc) {
         model->n_1g_alloc += UG_ALLOC_STEP;
         model->word_str = ckd_realloc(model->word_str,
-                                      sizeof(*model->word_str) * model->n_1g_alloc);
+                                      sizeof(*model->word_str) *
+                                      model->n_1g_alloc);
     }
     /* Add the word string in the appropriate manner. */
     /* Class words are always dynamically allocated. */
     model->word_str[model->n_words] = ckd_salloc(word);
     /* Now enter it into the hash table. */
-    if (hash_table_enter_int32(model->wid, model->word_str[model->n_words], wid) != wid) {
-        E_ERROR("Hash insertion failed for word %s => %p (should not happen)\n",
-                model->word_str[model->n_words], (void *)(long)(wid));
+    if (hash_table_enter_int32
+        (model->wid, model->word_str[model->n_words], wid) != wid) {
+        E_ERROR
+            ("Hash insertion failed for word %s => %p (should not happen)\n",
+             model->word_str[model->n_words], (void *) (long) (wid));
     }
     /* Increment number of words. */
     ++model->n_words;
@@ -850,16 +646,16 @@ ngram_add_word_internal(ngram_model_t *model,
 }
 
 int32
-ngram_model_add_word(ngram_model_t *model,
+ngram_model_add_word(ngram_model_t * model,
                      const char *word, float32 weight)
 {
     int32 wid, prob = model->log_zero;
 
     /* If we add word to unwritable model, we need to make it writable */
     if (!model->writable) {
-      E_WARN("Can't add word '%s' to read-only language model. "
-             "Disable mmap with '-mmap no' to make it writable\n", word);
-      return -1;
+        E_WARN("Can't add word '%s' to read-only language model. "
+               "Disable mmap with '-mmap no' to make it writable\n", word);
+        return -1;
     }
 
     wid = ngram_add_word_internal(model, word, -1);
@@ -868,15 +664,18 @@ ngram_model_add_word(ngram_model_t *model,
 
     /* Do what needs to be done to add the word to the unigram. */
     if (model->funcs && model->funcs->add_ug)
-      prob = (*model->funcs->add_ug)(model, wid, logmath_log(model->lmath, weight));
+        prob =
+            (*model->funcs->add_ug) (model, wid,
+                                     logmath_log(model->lmath, weight));
     if (prob == 0)
-      return -1;
+        return -1;
 
     return wid;
 }
 
 ngram_class_t *
-ngram_class_new(ngram_model_t *model, int32 tag_wid, int32 start_wid, glist_t classwords)
+ngram_class_new(ngram_model_t * model, int32 tag_wid, int32 start_wid,
+                glist_t classwords)
 {
     ngram_class_t *lmclass;
     gnode_t *gn;
@@ -896,7 +695,7 @@ ngram_class_new(ngram_model_t *model, int32 tag_wid, int32 start_wid, glist_t cl
         tprob += gnode_float32(gn);
     }
     if (tprob > 1.1 || tprob < 0.9) {
-        E_WARN("Total class probability is %f, will normalize\n", tprob);
+        E_INFO("Total class probability is %f, will normalize\n", tprob);
         for (gn = classwords; gn; gn = gnode_next(gn)) {
             gn->data.fl /= tprob;
         }
@@ -909,14 +708,16 @@ ngram_class_new(ngram_model_t *model, int32 tag_wid, int32 start_wid, glist_t cl
 }
 
 int32
-ngram_class_add_word(ngram_class_t *lmclass, int32 wid, int32 lweight)
+ngram_class_add_word(ngram_class_t * lmclass, int32 wid, int32 lweight)
 {
     int32 hash;
 
     if (lmclass->nword_hash == NULL) {
         /* Initialize everything in it to -1 */
-        lmclass->nword_hash = ckd_malloc(NGRAM_HASH_SIZE * sizeof(*lmclass->nword_hash));
-        memset(lmclass->nword_hash, 0xff, NGRAM_HASH_SIZE * sizeof(*lmclass->nword_hash));
+        lmclass->nword_hash =
+            ckd_malloc(NGRAM_HASH_SIZE * sizeof(*lmclass->nword_hash));
+        memset(lmclass->nword_hash, 0xff,
+               NGRAM_HASH_SIZE * sizeof(*lmclass->nword_hash));
         lmclass->n_hash = NGRAM_HASH_SIZE;
         lmclass->n_hash_inuse = 0;
     }
@@ -940,10 +741,12 @@ ngram_class_add_word(ngram_class_t *lmclass, int32 wid, int32 lweight)
         /* Does we has any more bukkit? */
         if (lmclass->n_hash_inuse == lmclass->n_hash) {
             /* Oh noes!  Ok, we makes more. */
-            lmclass->nword_hash = ckd_realloc(lmclass->nword_hash, 
-                                              lmclass->n_hash * 2 * sizeof(*lmclass->nword_hash));
-            memset(lmclass->nword_hash + lmclass->n_hash,
-                   0xff, lmclass->n_hash * sizeof(*lmclass->nword_hash));
+            lmclass->nword_hash = ckd_realloc(lmclass->nword_hash,
+                                              lmclass->n_hash * 2 *
+                                              sizeof(*lmclass->
+                                                     nword_hash));
+            memset(lmclass->nword_hash + lmclass->n_hash, 0xff,
+                   lmclass->n_hash * sizeof(*lmclass->nword_hash));
             /* Just use the next allocated one (easy) */
             next = lmclass->n_hash;
             lmclass->n_hash *= 2;
@@ -965,7 +768,7 @@ ngram_class_add_word(ngram_class_t *lmclass, int32 wid, int32 lweight)
 }
 
 void
-ngram_class_free(ngram_class_t *lmclass)
+ngram_class_free(ngram_class_t * lmclass)
 {
     ckd_free(lmclass->nword_hash);
     ckd_free(lmclass->prob1);
@@ -973,10 +776,9 @@ ngram_class_free(ngram_class_t *lmclass)
 }
 
 int32
-ngram_model_add_class_word(ngram_model_t *model,
+ngram_model_add_class_word(ngram_model_t * model,
                            const char *classname,
-                           const char *word,
-                           float32 weight)
+                           const char *word, float32 weight)
 {
     ngram_class_t *lmclass;
     int32 classid, tag_wid, wid, i, scale;
@@ -996,7 +798,9 @@ ngram_model_add_class_word(ngram_model_t *model,
     }
     /* Hmm, no such class.  It's probably not a good idea to create one. */
     if (classid == model->n_classes) {
-        E_ERROR("Word %s is not a class tag (call ngram_model_add_class() first)\n", classname);
+        E_ERROR
+            ("Word %s is not a class tag (call ngram_model_add_class() first)\n",
+             classname);
         return NGRAM_INVALID_WID;
     }
     lmclass = model->classes[classid];
@@ -1019,24 +823,24 @@ ngram_model_add_class_word(ngram_model_t *model,
             lmclass->nword_hash[i].prob1 += scale;
 
     /* Now add it to the class hash table. */
-    return ngram_class_add_word(lmclass, wid, logmath_log(model->lmath, fprob));
+    return ngram_class_add_word(lmclass, wid,
+                                logmath_log(model->lmath, fprob));
 }
 
 int32
-ngram_model_add_class(ngram_model_t *model,
+ngram_model_add_class(ngram_model_t * model,
                       const char *classname,
                       float32 classweight,
-                      char **words,
-                      const float32 *weights,
-                      int32 n_words)
+                      char **words, const float32 * weights, int32 n_words)
 {
     ngram_class_t *lmclass;
     glist_t classwords = NULL;
     int32 i, start_wid = -1;
     int32 classid, tag_wid;
 
-    /* Check if classname already exists in model.  If not, add it.*/
-    if ((tag_wid = ngram_wid(model, classname)) == ngram_unknown_wid(model)) {
+    /* Check if classname already exists in model.  If not, add it. */
+    if ((tag_wid =
+         ngram_wid(model, classname)) == ngram_unknown_wid(model)) {
         tag_wid = ngram_model_add_word(model, classname, classweight);
         if (tag_wid == NGRAM_INVALID_WID)
             return -1;
@@ -1068,13 +872,14 @@ ngram_model_add_class(ngram_model_t *model,
         model->classes = ckd_calloc(1, sizeof(*model->classes));
     else
         model->classes = ckd_realloc(model->classes,
-                                     model->n_classes * sizeof(*model->classes));
+                                     model->n_classes *
+                                     sizeof(*model->classes));
     model->classes[classid] = lmclass;
     return classid;
 }
 
 int32
-ngram_class_prob(ngram_class_t *lmclass, int32 wid)
+ngram_class_prob(ngram_class_t * lmclass, int32 wid)
 {
     int32 base_wid = NGRAM_BASEWID(wid);
 
@@ -1096,7 +901,7 @@ ngram_class_prob(ngram_class_t *lmclass, int32 wid)
 }
 
 int32
-read_classdef_file(hash_table_t *classes, const char *file_name)
+read_classdef_file(hash_table_t * classes, const char *file_name)
 {
     FILE *fp;
     int32 is_pipe;
@@ -1153,9 +958,10 @@ read_classdef_file(hash_table_t *classes, const char *file_name)
                     word = gnode_next(word);
                     weight = gnode_next(weight);
                 }
-                
+
                 /* Add this class to the hash table. */
-                if (hash_table_enter(classes, classname, classdef) != classdef) {
+                if (hash_table_enter(classes, classname, classdef) !=
+                    classdef) {
                     classdef_free(classdef);
                     goto error_out;
                 }
@@ -1171,11 +977,12 @@ read_classdef_file(hash_table_t *classes, const char *file_name)
                 float32 fprob;
 
                 if (n_words == 2)
-                    fprob = (float32)atof_c(wptr[1]);
+                    fprob = atof_c(wptr[1]);
                 else
                     fprob = 1.0f;
                 /* Add it to the list of words for this class. */
-                classwords = glist_add_ptr(classwords, ckd_salloc(wptr[0]));
+                classwords =
+                    glist_add_ptr(classwords, ckd_salloc(wptr[0]));
                 classprobs = glist_add_float32(classprobs, fprob);
             }
         }
@@ -1190,9 +997,9 @@ read_classdef_file(hash_table_t *classes, const char *file_name)
             /* Otherwise, just ignore whatever junk we got */
         }
     }
-    rv = 0; /* Success. */
+    rv = 0;                     /* Success. */
 
-error_out:
+  error_out:
     /* Free all the stuff we might have allocated. */
     fclose_comp(fp, is_pipe);
     for (gn = classwords; gn; gn = gnode_next(gn))
@@ -1205,7 +1012,7 @@ error_out:
 }
 
 void
-classdef_free(classdef_t *classdef)
+classdef_free(classdef_t * classdef)
 {
     int32 i;
     for (i = 0; i < classdef->n_words; ++i)
@@ -1217,8 +1024,7 @@ classdef_free(classdef_t *classdef)
 
 
 int32
-ngram_model_read_classdef(ngram_model_t *model,
-                          const char *file_name)
+ngram_model_read_classdef(ngram_model_t * model, const char *file_name)
 {
     hash_table_t *classes;
     glist_t hl = NULL;
@@ -1230,7 +1036,7 @@ ngram_model_read_classdef(ngram_model_t *model,
         hash_table_free(classes);
         return -1;
     }
-    
+
     /* Create a new class in the language model for each classdef. */
     hl = hash_table_tolist(classes, NULL);
     for (gn = hl; gn; gn = gnode_next(gn)) {
@@ -1245,10 +1051,10 @@ ngram_model_read_classdef(ngram_model_t *model,
     }
     rv = 0;
 
-error_out:
+  error_out:
     for (gn = hl; gn; gn = gnode_next(gn)) {
         hash_entry_t *he = gnode_ptr(gn);
-        ckd_free((char *)he->key);
+        ckd_free((char *) he->key);
         classdef_free(he->val);
     }
     glist_free(hl);

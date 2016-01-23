@@ -50,10 +50,9 @@ static int phone_loop_search_reinit(ps_search_t *search, dict_t *dict, dict2pid_
 static void phone_loop_search_free(ps_search_t *search);
 static char const *phone_loop_search_hyp(ps_search_t *search, int32 *out_score, int32 *out_is_final);
 static int32 phone_loop_search_prob(ps_search_t *search);
-static ps_seg_t *phone_loop_search_seg_iter(ps_search_t *search, int32 *out_score);
+static ps_seg_t *phone_loop_search_seg_iter(ps_search_t *search);
 
 static ps_searchfuncs_t phone_loop_search_funcs = {
-    /* name: */   "phone_loop",
     /* start: */  phone_loop_search_start,
     /* step: */   phone_loop_search_step,
     /* finish: */ phone_loop_search_finish,
@@ -84,24 +83,33 @@ phone_loop_search_reinit(ps_search_t *search, dict_t *dict, dict2pid_t *d2p)
     if (pls->hmmctx == NULL)
         return -1;
 
-    /* Initialize phone HMMs. */
-    if (pls->phones) {
-        for (i = 0; i < pls->n_phones; ++i)
-            hmm_deinit((hmm_t *)&pls->phones[i]);
-        ckd_free(pls->phones);
-    }
+    /* Initialize penalty storage */
     pls->n_phones = bin_mdef_n_ciphone(acmod->mdef);
-    pls->phones = ckd_calloc(pls->n_phones, sizeof(*pls->phones));
+    pls->window = cmd_ln_int32_r(config, "-pl_window");
+    if (pls->penalties)
+        ckd_free(pls->penalties);
+    pls->penalties = (int32 *)ckd_calloc(pls->n_phones, sizeof(*pls->penalties));
+    if (pls->pen_buf)
+        ckd_free_2d(pls->pen_buf);
+    pls->pen_buf = (int32 **)ckd_calloc_2d(pls->window, pls->n_phones, sizeof(**pls->pen_buf));
+
+    /* Initialize phone HMMs. */
+    if (pls->hmms) {
+        for (i = 0; i < pls->n_phones; ++i)
+            hmm_deinit((hmm_t *)&pls->hmms[i]);
+        ckd_free(pls->hmms);
+    }
+    pls->hmms = (hmm_t *)ckd_calloc(pls->n_phones, sizeof(*pls->hmms));
     for (i = 0; i < pls->n_phones; ++i) {
-        pls->phones[i].ciphone = i;
-        hmm_init(pls->hmmctx, (hmm_t *)&pls->phones[i],
+        hmm_init(pls->hmmctx, (hmm_t *)&pls->hmms[i],
                  FALSE,
                  bin_mdef_pid2ssid(acmod->mdef, i),
                  bin_mdef_pid2tmatid(acmod->mdef, i));
     }
-    pls->beam = logmath_log(acmod->lmath, cmd_ln_float64_r(config, "-pl_beam"));
-    pls->pbeam = logmath_log(acmod->lmath, cmd_ln_float64_r(config, "-pl_pbeam"));
-    pls->pip = logmath_log(acmod->lmath, cmd_ln_float64_r(config, "-pip"));
+    pls->penalty_weight = cmd_ln_float64_r(config, "-pl_weight");
+    pls->beam = logmath_log(acmod->lmath, cmd_ln_float64_r(config, "-pl_beam")) >> SENSCR_SHIFT;
+    pls->pbeam = logmath_log(acmod->lmath, cmd_ln_float64_r(config, "-pl_pbeam")) >> SENSCR_SHIFT;
+    pls->pip = logmath_log(acmod->lmath, cmd_ln_float32_r(config, "-pl_pip")) >> SENSCR_SHIFT;
     E_INFO("State beam %d Phone exit beam %d Insertion penalty %d\n",
            pls->beam, pls->pbeam, pls->pip);
 
@@ -110,14 +118,15 @@ phone_loop_search_reinit(ps_search_t *search, dict_t *dict, dict2pid_t *d2p)
 
 ps_search_t *
 phone_loop_search_init(cmd_ln_t *config,
-		       acmod_t *acmod,
-		       dict_t *dict)
+               acmod_t *acmod,
+               dict_t *dict)
 {
     phone_loop_search_t *pls;
 
     /* Allocate and initialize. */
-    pls = ckd_calloc(1, sizeof(*pls));
+    pls = (phone_loop_search_t *)ckd_calloc(1, sizeof(*pls));
     ps_search_init(ps_search_base(pls), &phone_loop_search_funcs,
+		   PS_SEARCH_TYPE_PHONE_LOOP, PS_DEFAULT_PL_SEARCH,
                    config, acmod, dict, NULL);
     phone_loop_search_reinit(ps_search_base(pls), ps_search_dict(pls),
                              ps_search_dict2pid(pls));
@@ -141,11 +150,13 @@ phone_loop_search_free(ps_search_t *search)
     phone_loop_search_t *pls = (phone_loop_search_t *)search;
     int i;
 
-    ps_search_deinit(search);
+    ps_search_base_free(search);
     for (i = 0; i < pls->n_phones; ++i)
-        hmm_deinit((hmm_t *)&pls->phones[i]);
+        hmm_deinit((hmm_t *)&pls->hmms[i]);
     phone_loop_search_free_renorm(pls);
-    ckd_free(pls->phones);
+    ckd_free_2d(pls->pen_buf);
+    ckd_free(pls->hmms);
+    ckd_free(pls->penalties);
     hmm_context_free(pls->hmmctx);
     ckd_free(pls);
 }
@@ -158,12 +169,16 @@ phone_loop_search_start(ps_search_t *search)
 
     /* Reset and enter all phone HMMs. */
     for (i = 0; i < pls->n_phones; ++i) {
-        hmm_t *hmm = (hmm_t *)&pls->phones[i];
+        hmm_t *hmm = (hmm_t *)&pls->hmms[i];
         hmm_clear(hmm);
         hmm_enter(hmm, 0, -1, 0);
     }
+    memset(pls->penalties, 0, pls->n_phones * sizeof(*pls->penalties));
+    for (i = 0; i < pls->window; i++)
+        memset(pls->pen_buf[i], 0, pls->n_phones * sizeof(*pls->pen_buf[i]));
     phone_loop_search_free_renorm(pls);
     pls->best_score = 0;
+    pls->pen_buf_ptr = 0;
 
     return 0;
 }
@@ -171,7 +186,7 @@ phone_loop_search_start(ps_search_t *search)
 static void
 renormalize_hmms(phone_loop_search_t *pls, int frame_idx, int32 norm)
 {
-    phone_loop_renorm_t *rn = ckd_calloc(1, sizeof(*rn));
+    phone_loop_renorm_t *rn = (phone_loop_renorm_t *)ckd_calloc(1, sizeof(*rn));
     int i;
 
     pls->renorm = glist_add_ptr(pls->renorm, rn);
@@ -179,11 +194,11 @@ renormalize_hmms(phone_loop_search_t *pls, int frame_idx, int32 norm)
     rn->norm = norm;
 
     for (i = 0; i < pls->n_phones; ++i) {
-        hmm_normalize((hmm_t *)&pls->phones[i], norm);
+        hmm_normalize((hmm_t *)&pls->hmms[i], norm);
     }
 }
 
-static int32
+static void
 evaluate_hmms(phone_loop_search_t *pls, int16 const *senscr, int frame_idx)
 {
     int32 bs = WORST_SCORE;
@@ -192,7 +207,7 @@ evaluate_hmms(phone_loop_search_t *pls, int16 const *senscr, int frame_idx)
     hmm_context_set_senscore(pls->hmmctx, senscr);
 
     for (i = 0; i < pls->n_phones; ++i) {
-        hmm_t *hmm = (hmm_t *)&pls->phones[i];
+        hmm_t *hmm = (hmm_t *)&pls->hmms[i];
         int32 score;
 
         if (hmm_frame(hmm) < frame_idx)
@@ -203,7 +218,29 @@ evaluate_hmms(phone_loop_search_t *pls, int16 const *senscr, int frame_idx)
         }
     }
     pls->best_score = bs;
-    return bs;
+}
+
+static void
+store_scores(phone_loop_search_t *pls, int frame_idx)
+{
+    int i, j, itr;
+
+    for (i = 0; i < pls->n_phones; ++i) {
+        hmm_t *hmm = (hmm_t *)&pls->hmms[i];
+        pls->pen_buf[pls->pen_buf_ptr][i] = (hmm_bestscore(hmm) - pls->best_score) * pls->penalty_weight;
+    }
+    pls->pen_buf_ptr++;
+    pls->pen_buf_ptr = pls->pen_buf_ptr % pls->window;
+
+    //update penalties
+    for (i = 0; i < pls->n_phones; ++i) {
+        pls->penalties[i] = WORST_SCORE;
+        for (j = 0, itr = pls->pen_buf_ptr + 1; j < pls->window; j++, itr++) {
+            itr = itr % pls->window;
+            if (pls->pen_buf[itr][i] > pls->penalties[i])
+                pls->penalties[i] = pls->pen_buf[itr][i];
+        }
+    }
 }
 
 static void
@@ -215,7 +252,7 @@ prune_hmms(phone_loop_search_t *pls, int frame_idx)
 
     /* Check all phones to see if they remain active in the next frame. */
     for (i = 0; i < pls->n_phones; ++i) {
-        hmm_t *hmm = (hmm_t *)&pls->phones[i];
+        hmm_t *hmm = (hmm_t *)&pls->hmms[i];
 
         if (hmm_frame(hmm) < frame_idx)
             continue;
@@ -238,7 +275,7 @@ phone_transition(phone_loop_search_t *pls, int frame_idx)
     /* Now transition out of phones whose last states are inside the
      * phone transition beam. */
     for (i = 0; i < pls->n_phones; ++i) {
-        hmm_t *hmm = (hmm_t *)&pls->phones[i];
+        hmm_t *hmm = (hmm_t *)&pls->hmms[i];
         int32 newphone_score;
         int j;
 
@@ -249,7 +286,7 @@ phone_transition(phone_loop_search_t *pls, int frame_idx)
         if (newphone_score BETTER_THAN thresh) {
             /* Transition into all phones using the usual Viterbi rule. */
             for (j = 0; j < pls->n_phones; ++j) {
-                hmm_t *nhmm = (hmm_t *)&pls->phones[j];
+                hmm_t *nhmm = (hmm_t *)&pls->hmms[j];
 
                 if (hmm_frame(nhmm) < frame_idx
                     || newphone_score BETTER_THAN hmm_in_score(nhmm)) {
@@ -269,9 +306,11 @@ phone_loop_search_step(ps_search_t *search, int frame_idx)
     int i;
 
     /* All CI senones are active all the time. */
-    if (!ps_search_acmod(pls)->compallsen)
+    if (!ps_search_acmod(pls)->compallsen) {
+        acmod_clear_active(ps_search_acmod(pls));
         for (i = 0; i < pls->n_phones; ++i)
-            acmod_activate_hmm(acmod, (hmm_t *)&pls->phones[i]);
+            acmod_activate_hmm(acmod, (hmm_t *)&pls->hmms[i]);
+    }
 
     /* Calculate senone scores for current frame. */
     senscr = acmod_score(acmod, &frame_idx);
@@ -284,7 +323,10 @@ phone_loop_search_step(ps_search_t *search, int frame_idx)
     }
 
     /* Evaluate phone HMMs for current frame. */
-    pls->best_score = evaluate_hmms(pls, senscr, frame_idx);
+    evaluate_hmms(pls, senscr, frame_idx);
+
+    /* Store hmm scores for senone penaly calculation */
+    store_scores(pls, frame_idx);
 
     /* Prune phone HMMs. */
     prune_hmms(pls, frame_idx);
@@ -318,7 +360,7 @@ phone_loop_search_prob(ps_search_t *search)
 }
 
 static ps_seg_t *
-phone_loop_search_seg_iter(ps_search_t *search, int32 *out_score)
+phone_loop_search_seg_iter(ps_search_t *search)
 {
     E_WARN("Hypotheses are not returned from phone loop search");
     return NULL;
