@@ -58,7 +58,7 @@ namespace PocketSphinxWindowsPhoneDemo
 
         private WasapiAudioRecorder audioRecorder;
 
-        private enum RecognizerMode { Wakeup, Digits, Menu };
+        private enum RecognizerMode { Wakeup, Digits, Menu, Phones };
                
         #endregion
 
@@ -89,6 +89,37 @@ namespace PocketSphinxWindowsPhoneDemo
             progressBar.IsIndeterminate = false;
             ContentPanel.IsHitTestVisible = true;
             StateMessageBlock.Text = "ready for use";
+
+            // Set innitial UI state
+            WakeButtonOnClick(this, null);
+        }
+
+        #endregion
+
+        #region Button events
+
+        private void WakeButtonOnClick(object sender, RoutedEventArgs e)
+        {
+            Mode = RecognizerMode.Wakeup;
+            TipMessageBlock.Text = string.Format("tip: say '{0}'", WakeupText);
+        }
+
+        private void DigitsButtonOnClick(object sender, RoutedEventArgs e)
+        {
+            Mode = RecognizerMode.Digits;
+            TipMessageBlock.Text = string.Format("tip: say '{0}'", string.Join(",", DigitValues));
+        }
+
+        private void MenuButtonOnClick(object sender, RoutedEventArgs e)
+        {
+            Mode = RecognizerMode.Menu;
+            TipMessageBlock.Text = string.Format("tip: say '{0}'", string.Join(",", MenuValues));
+        }
+
+        private void PhonesButtonOnClick(object sender, RoutedEventArgs e)
+        {
+            Mode = RecognizerMode.Phones;
+            TipMessageBlock.Text = string.Format("tip: say '{0}'", string.Join(",", DigitValues));
         }
 
         #endregion
@@ -143,6 +174,11 @@ namespace PocketSphinxWindowsPhoneDemo
             }
         }
 
+        private void FoundText(string recognizedText)
+        {
+            MainMessageBlock.Text = recognizedText;
+        }
+
         private void SetRecognizerMode(RecognizerMode mode)
         {
             string result = string.Empty;
@@ -175,7 +211,7 @@ namespace PocketSphinxWindowsPhoneDemo
                 // Load Async
                 await Task.Run(() =>
                 {
-                    var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us-semi", "\\Assets\\models\\dict\\cmu07a.dic");
+                    var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us", "\\Assets\\models\\dict\\cmudict-en-us.dict");
                     initResults.Add(initResult);
                     initResult = speechRecognizer.AddKeyphraseSearch(RecognizerMode.Wakeup.ToString(), WakeupText);
                     initResults.Add(initResult);
@@ -184,6 +220,8 @@ namespace PocketSphinxWindowsPhoneDemo
                     initResult = speechRecognizer.AddGrammarSearch(RecognizerMode.Digits.ToString(), "\\Assets\\models\\grammar\\digits.gram");
                     initResults.Add(initResult);
                     initResult = speechRecognizer.AddNgramSearch("forecast", "\\Assets\\models\\lm\\weather.dmp");
+                    initResults.Add(initResult);
+                    initResult = speechRecognizer.AddPhonesSearch(RecognizerMode.Phones.ToString(), "\\Assets\\models\\lm\\en-us-phone.lm.bin");
                     initResults.Add(initResult);
                 });
 
@@ -243,7 +281,8 @@ namespace PocketSphinxWindowsPhoneDemo
         void speechRecognizer_resultFinalizedBySilence(string finalResult)
         {
             Debug.WriteLine("final result found: {0}", finalResult);
-            FindMatchToToggle(finalResult);
+            //FindMatchToToggle(finalResult);
+            FoundText(finalResult);
         }
 
         void speechRecognizer_resultFound(string result)

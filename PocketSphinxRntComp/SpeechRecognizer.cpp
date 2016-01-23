@@ -189,6 +189,20 @@ Platform::String^ SpeechRecognizer::AddNgramSearch(Platform::String^ name, Platf
 		Platform::String::Concat("fault adding Ngram search: ", name);
 }
 
+//// Add phones search (like *.? files)
+Platform::String^ SpeechRecognizer::AddPhonesSearch(Platform::String^ name, Platform::String^ filePath)
+{
+	char *Cname = convertStringToChars(name);
+	char *CfilePath = convertStringToChars(filePath);
+	char *CcompleteFilePath = concat(installedFolderPath, CfilePath);
+
+	int result = ps_set_allphone_file(ps, Cname, CcompleteFilePath);
+
+	return (result == 0) ?
+		Platform::String::Concat(name, " Phones search added") :
+		Platform::String::Concat("fault adding Phones search: ", name);
+}
+
 #pragma endregion
 
 #pragma region Operation methods

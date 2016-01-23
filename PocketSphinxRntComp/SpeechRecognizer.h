@@ -21,6 +21,7 @@ namespace PocketSphinxRntComp
 		Platform::String^ AddKeyphraseSearch(Platform::String^ name, Platform::String^ keyphrase);
 		Platform::String^ AddGrammarSearch(Platform::String^ name, Platform::String^ filePath);
 		Platform::String^ AddNgramSearch(Platform::String^ name, Platform::String^ filePath);
+		Platform::String^ AddPhonesSearch(Platform::String^ name, Platform::String^ filePath);
 		
 		// STEP 2: Set search
 		Platform::String^ SetSearch(Platform::String^ name);		

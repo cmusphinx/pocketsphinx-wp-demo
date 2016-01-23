@@ -41,10 +41,22 @@
                        VerticalAlignment="Center" 
                        TextWrapping="Wrap" />
 
-            <TextBlock x:Name="StateMessageBlock" 
+            <StackPanel Orientation="Vertical" VerticalAlignment="Bottom" >
+                <TextBlock x:Name="StateMessageBlock" 
                        TextAlignment="Center" 
-                       VerticalAlignment="Bottom" 
                        TextWrapping="Wrap" />
+                <TextBlock x:Name="TipMessageBlock" 
+                       TextAlignment="Center" 
+                       TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal">
+                    <Button Click="WakeButtonOnClick">Wake</Button>
+                    <Button Click="DigitsButtonOnClick" >Digits</Button>
+                    <Button Click="MenuButtonOnClick" >Menu</Button>
+                    <Button Click="PhonesButtonOnClick" >Phones</Button>
+                </StackPanel>
+            </StackPanel>
+
+            
         </Grid>
 
         <ProgressBar Grid.Row="1" 
