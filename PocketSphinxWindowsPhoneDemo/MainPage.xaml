@@ -41,6 +41,15 @@
                        VerticalAlignment="Center" 
                        TextWrapping="Wrap" />
 
+            <Grid Height="100" x:Name="InnitiazeButtonsStack">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Click="InitializeNormalButtonOnClick">Normal</Button>
+                <Button Grid.Column="1" Click="InitializePhonemeButtonOnClick" >Phonemes</Button>
+            </Grid>
+            
             <StackPanel Orientation="Vertical" VerticalAlignment="Bottom" >
                 <TextBlock x:Name="StateMessageBlock" 
                        TextAlignment="Center" 
@@ -48,11 +57,10 @@
                 <TextBlock x:Name="TipMessageBlock" 
                        TextAlignment="Center" 
                        TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal">
-                    <Button Click="WakeButtonOnClick">Wake</Button>
+                <StackPanel x:Name="RecognitionButtonsStack" Orientation="Horizontal">
+                    <Button Click="WakeButtonOnClick">Wake up</Button>
                     <Button Click="DigitsButtonOnClick" >Digits</Button>
                     <Button Click="MenuButtonOnClick" >Menu</Button>
-                    <Button Click="PhonesButtonOnClick" >Phones</Button>
                 </StackPanel>
             </StackPanel>
 
