@@ -36,7 +36,7 @@ namespace PocketSphinxWindowsPhoneDemo
 
         #region Properties
 
-        private RecognizerMode _mode = RecognizerMode.Wakeup;
+        private RecognizerMode _mode;
         private RecognizerMode Mode
         {
             get { return _mode; }
@@ -59,6 +59,8 @@ namespace PocketSphinxWindowsPhoneDemo
         private WasapiAudioRecorder audioRecorder;
 
         private enum RecognizerMode { Wakeup, Digits, Menu, Phones };
+
+        private bool isPhonemeRecognitionEnabled;
                
         #endregion
 
@@ -69,11 +71,28 @@ namespace PocketSphinxWindowsPhoneDemo
             InitializeComponent();
         }
 
-        private async void PhoneApplicationPage_Loaded(object sender, RoutedEventArgs e)
+        private void PhoneApplicationPage_Loaded(object sender, RoutedEventArgs e)
         {
-            // UI
+            progressBar.Visibility = System.Windows.Visibility.Collapsed;
+            progressBar.IsIndeterminate = false;
+
+            RecognitionButtonsStack.Visibility = Visibility.Collapsed;
+            InnitiazeButtonsStack.Visibility = Visibility.Visible;
+            StateMessageBlock.Text = "Choose Recognition";
+        }
+
+        #endregion
+
+        #region Innitial Load methods
+
+        private async void LoadRecognitionAsync(bool phonemeRecognitionEnabled)
+        {
+            isPhonemeRecognitionEnabled = phonemeRecognitionEnabled;
+            InnitiazeButtonsStack.Visibility = Visibility.Collapsed;
+
             progressBar.IsIndeterminate = true;
             ContentPanel.IsHitTestVisible = false;
+
             StateMessageBlock.Text = "components are loading";
 
             // Initializing
@@ -90,13 +109,30 @@ namespace PocketSphinxWindowsPhoneDemo
             ContentPanel.IsHitTestVisible = true;
             StateMessageBlock.Text = "ready for use";
 
-            // Set innitial UI state
-            WakeButtonOnClick(this, null);
+            if (!isPhonemeRecognitionEnabled)
+            {
+                RecognitionButtonsStack.Visibility = Visibility.Visible;
+
+                // Set innitial UI state
+                WakeButtonOnClick(this, null);
+            }
         }
 
         #endregion
 
         #region Button events
+
+        private void InitializeNormalButtonOnClick(object sender, RoutedEventArgs e)
+        {
+            _mode = RecognizerMode.Wakeup;
+            LoadRecognitionAsync(false);
+        }
+
+        private void InitializePhonemeButtonOnClick(object sender, RoutedEventArgs e)
+        {
+            _mode = RecognizerMode.Phones;
+            LoadRecognitionAsync(true);
+        }
 
         private void WakeButtonOnClick(object sender, RoutedEventArgs e)
         {
@@ -114,12 +150,6 @@ namespace PocketSphinxWindowsPhoneDemo
         {
             Mode = RecognizerMode.Menu;
             TipMessageBlock.Text = string.Format("tip: say '{0}'", string.Join(",", MenuValues));
-        }
-
-        private void PhonesButtonOnClick(object sender, RoutedEventArgs e)
-        {
-            Mode = RecognizerMode.Phones;
-            TipMessageBlock.Text = string.Format("tip: say '{0}'", string.Join(",", DigitValues));
         }
 
         #endregion
@@ -208,22 +238,32 @@ namespace PocketSphinxWindowsPhoneDemo
                 speechRecognizer.resultFound += speechRecognizer_resultFound;
                 speechRecognizer.resultFinalizedBySilence += speechRecognizer_resultFinalizedBySilence;
 
-                // Load Async
-                await Task.Run(() =>
+                if (!isPhonemeRecognitionEnabled)
                 {
-                    var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us", "\\Assets\\models\\dict\\cmudict-en-us.dict");
-                    initResults.Add(initResult);
-                    initResult = speechRecognizer.AddKeyphraseSearch(RecognizerMode.Wakeup.ToString(), WakeupText);
-                    initResults.Add(initResult);
-                    initResult = speechRecognizer.AddGrammarSearch(RecognizerMode.Menu.ToString(), "\\Assets\\models\\grammar\\menu.gram");
-                    initResults.Add(initResult);
-                    initResult = speechRecognizer.AddGrammarSearch(RecognizerMode.Digits.ToString(), "\\Assets\\models\\grammar\\digits.gram");
-                    initResults.Add(initResult);
-                    initResult = speechRecognizer.AddNgramSearch("forecast", "\\Assets\\models\\lm\\weather.dmp");
-                    initResults.Add(initResult);
-                    initResult = speechRecognizer.AddPhonesSearch(RecognizerMode.Phones.ToString(), "\\Assets\\models\\lm\\en-us-phone.lm.bin");
-                    initResults.Add(initResult);
-                });
+                    await Task.Run(() =>
+                    {
+                        var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us", "\\Assets\\models\\dict\\cmu07a.dic");
+                        initResults.Add(initResult);
+                        initResult = speechRecognizer.AddKeyphraseSearch(RecognizerMode.Wakeup.ToString(), WakeupText);
+                        initResults.Add(initResult);
+                        initResult = speechRecognizer.AddGrammarSearch(RecognizerMode.Menu.ToString(), "\\Assets\\models\\grammar\\menu.gram");
+                        initResults.Add(initResult);
+                        initResult = speechRecognizer.AddGrammarSearch(RecognizerMode.Digits.ToString(), "\\Assets\\models\\grammar\\digits.gram");
+                        initResults.Add(initResult);
+                        initResult = speechRecognizer.AddNgramSearch("forecast", "\\Assets\\models\\lm\\weather.dmp");
+                        initResults.Add(initResult);
+                    });
+                }
+                else
+                {
+                    await Task.Run(() =>
+                    {
+                        var initResult = speechRecognizer.InitializePhonemeRecognition("\\Assets\\models\\hmm\\en-us");
+                        initResults.Add(initResult);
+                        initResult = speechRecognizer.AddPhonesSearch(RecognizerMode.Phones.ToString(), "\\Assets\\models\\lm\\en-us-phone.lm.bin");
+                        initResults.Add(initResult);
+                    });
+                }
 
                 SetRecognizerMode(Mode);
             }
@@ -334,8 +374,5 @@ namespace PocketSphinxWindowsPhoneDemo
         }
 
         #endregion
-
-
-        
     }
 }

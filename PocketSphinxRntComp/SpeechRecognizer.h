@@ -16,8 +16,11 @@ namespace PocketSphinxRntComp
     public:
 		SpeechRecognizer();
 
-		// STEP 1: Initialize and Load searches
+		// STEP 1: Initialize
 		Platform::String^ Initialize(Platform::String^ hmmFilePath, Platform::String^ dictFilePath);
+		Platform::String^ InitializePhonemeRecognition(Platform::String^ hmmFolderPath);
+
+		// STEP 1.1: Load search(es)
 		Platform::String^ AddKeyphraseSearch(Platform::String^ name, Platform::String^ keyphrase);
 		Platform::String^ AddGrammarSearch(Platform::String^ name, Platform::String^ filePath);
 		Platform::String^ AddNgramSearch(Platform::String^ name, Platform::String^ filePath);

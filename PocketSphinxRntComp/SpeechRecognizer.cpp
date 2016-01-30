@@ -37,9 +37,13 @@ using namespace Platform;
 
 #pragma endregion
 
+
+
 #pragma region Private Fields
 
-bool isInitialized = false;
+enum RecognitionType { None, Grammatic, Phonemes };
+RecognitionType initializedRecognitionType = RecognitionType::None;
+
 bool hasSearchBeenSet = false;
 
 bool isPreviousInSpeech = false;
@@ -100,14 +104,14 @@ String^ convertCharsToString(const char* chars)
 
 #pragma endregion
 
-#pragma region Initialize and Load Methods
+#pragma region Initialize methods
 
 //// Initialize decoder with default models
 /// hmmFolderPath	== the acoustic model folder (content folder: http://cmusphinx.sourceforge.net/wiki/tutorialam#using_the_model)
 /// dictFilePath	== the dictionary file
 Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, Platform::String^ dictFilePath)
 {
-	if (isInitialized)
+	if (initializedRecognitionType != RecognitionType::None)
 	{
 		return "PocketSphinx is already initialized";
 	}
@@ -141,13 +145,62 @@ Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, 
 	if (ps == NULL)
 		return "No decoder";
 
-	isInitialized = true;
+	initializedRecognitionType = RecognitionType::Grammatic;
 	return "PocketSphinx initialization done";
 }
+
+// Initialize decoder with default models
+//hmmFolderPath	== the acoustic model folder (content folder: http://cmusphinx.sourceforge.net/wiki/tutorialam#using_the_model)
+Platform::String^ SpeechRecognizer::InitializePhonemeRecognition(Platform::String^ hmmFolderPath)
+{
+	if (initializedRecognitionType != RecognitionType::None)
+	{
+		return "PocketSphinx is already initialized";
+	}
+
+	cmd_ln_t *config;
+
+	// Local Storage Path
+	wcstombs(localStorageFolder, Windows::Storage::ApplicationData::Current->LocalFolder->Path->Data(), 1024);
+	// Installed Folder path
+	wcstombs(installedFolderPath, Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data(), 1024);
+
+	//Error file path
+	char *logPath = concat(localStorageFolder, "\\errors.log");
+	char *hmmPath = concat(installedFolderPath, convertStringToChars(hmmFolderPath));
+
+	config = cmd_ln_init(NULL, ps_args(), TRUE,
+		"-hmm", hmmPath,
+		"-logfn", logPath,
+		"-allphone_ci", "yes",
+		"-lw", "2.0",
+		"-beam", "1e-20",
+		"-pbeam", "1e-20",
+		NULL);
+
+	if (config == NULL)
+		return "No config";
+
+	ps = ps_init(config);
+	if (ps == NULL)
+		return "No decoder";
+
+	initializedRecognitionType = RecognitionType::Phonemes;
+	return "PocketSphinx initialization done";
+}
+
+#pragma endregion
+
+#pragma region Load Methods
 
 //// Add keyword-activation search
 Platform::String^ SpeechRecognizer::AddKeyphraseSearch(Platform::String^ name, Platform::String^ keyphrase)
 {
+	if (initializedRecognitionType != RecognitionType::Grammatic)
+	{
+		return "Error: This type of search is not initialized";
+	}
+
 	char *Cname = convertStringToChars(name);
 	char *Ckeyphrase = convertStringToChars(keyphrase);
 
@@ -161,6 +214,11 @@ Platform::String^ SpeechRecognizer::AddKeyphraseSearch(Platform::String^ name, P
 //// Add grammar-based searches (like .jsgf or .gram files)
 Platform::String^ SpeechRecognizer::AddGrammarSearch(Platform::String^ name, Platform::String^ filePath)
 {
+	if (initializedRecognitionType != RecognitionType::Grammatic)
+	{
+		return "Error: This type of search is not initialized";
+	}
+
 	char *Cname = convertStringToChars(name);
 	char *CfilePath = convertStringToChars(filePath);
 	char *CcompleteFilePath = concat(installedFolderPath, CfilePath);
@@ -175,9 +233,14 @@ Platform::String^ SpeechRecognizer::AddGrammarSearch(Platform::String^ name, Pla
 		Platform::String::Concat("fault adding grammar search: ", name);
 }
 
-//// Add language model search (like *.dmp files)
+//// Add language model search (like .dmp files)
 Platform::String^ SpeechRecognizer::AddNgramSearch(Platform::String^ name, Platform::String^ filePath)
 {
+	if (initializedRecognitionType != RecognitionType::Grammatic)
+	{
+		return "Error: This type of search is not initialized";
+	}
+
 	char *Cname = convertStringToChars(name);
 	char *CfilePath = convertStringToChars(filePath);
 	char *CcompleteFilePath = concat(installedFolderPath, CfilePath);
@@ -189,9 +252,14 @@ Platform::String^ SpeechRecognizer::AddNgramSearch(Platform::String^ name, Platf
 		Platform::String::Concat("fault adding Ngram search: ", name);
 }
 
-//// Add phones search (like *.? files)
+//// Add phones search (like .lm.bin files)
 Platform::String^ SpeechRecognizer::AddPhonesSearch(Platform::String^ name, Platform::String^ filePath)
 {
+	if (initializedRecognitionType != RecognitionType::Phonemes)
+	{
+		return "Error: This type of search is not initialized";
+	}
+
 	char *Cname = convertStringToChars(name);
 	char *CfilePath = convertStringToChars(filePath);
 	char *CcompleteFilePath = concat(installedFolderPath, CfilePath);
@@ -373,20 +441,20 @@ Platform::String^ SpeechRecognizer::SetSearch(Platform::String^ name)
 //// Cleanup PocketSphinx resources
 Platform::String^ SpeechRecognizer::CleanPocketSphinx(void)
 {
-	if (!isInitialized || ps == nullptr)
+	if (initializedRecognitionType == RecognitionType::None || ps == nullptr)
 	{
 		return "PocketSphinx is not initialized";
 	}
 
 	ps_free(ps);
-	isInitialized = false;
+	initializedRecognitionType = RecognitionType::None;
 
 	return "PocketSphinx resources cleaned";
 }
 
 Platform::Boolean SpeechRecognizer::IsReadyForProcessing(Platform::String^& message)
 {
-	if (!isInitialized)
+	if (initializedRecognitionType == RecognitionType::None)
 	{
 		message = "PocketSphinx is not initialized";
 		return false;
