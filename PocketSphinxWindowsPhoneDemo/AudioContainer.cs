@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Diagnostics;
+using PocketSphinxRntComp;
+using PocketSphinxWindowsPhoneDemo.Recorder;
 
 namespace PocketSphinxWindowsPhoneDemo
 {
@@ -13,13 +10,13 @@ namespace PocketSphinxWindowsPhoneDemo
         /// <summary>
         /// PocketSphinx speech recognizer in a Runtime Component
         /// </summary>
-        public static PocketSphinxRntComp.SpeechRecognizer SphinxSpeechRecognizer
+        public static SpeechRecognizer SphinxSpeechRecognizer
         { get; set; }
 
         /// <summary>
         /// Native Audio Recorder working with WASAPI
         /// </summary>
-        public static PocketSphinxWindowsPhoneDemo.Recorder.WasapiAudioRecorder AudioRecorder
+        public static WasapiAudioRecorder AudioRecorder
         { get; set; }
 
         /// <summary>

@@ -34,22 +34,19 @@
                        TextAlignment="Center" 
                        VerticalAlignment="Top" 
                        TextWrapping="Wrap" />
-            
+
             <TextBlock x:Name="MainMessageBlock" 
                        Style="{StaticResource PhoneTextExtraLargeStyle}"
                        TextAlignment="Center" 
                        VerticalAlignment="Center" 
                        TextWrapping="Wrap" />
 
-            <Grid Height="100" x:Name="InnitiazeButtonsStack">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Button Grid.Column="0" Click="InitializeNormalButtonOnClick">Normal</Button>
-                <Button Grid.Column="1" Click="InitializePhonemeButtonOnClick" >Phonemes</Button>
-            </Grid>
-            
+            <StackPanel Orientation="Vertical" x:Name="InnitiazeButtonsStack" Margin="0,114,0,0">
+                <Button Click="InitializeNormalButtonOnClick">Normal Continuous recognition</Button>
+                <Button Click="InitializePhonemeButtonOnClick" >Phonemes Continuous recognition</Button>
+                <Button Click="InitializeUtteranceButtonOnClick">Single Utterance recognition</Button>
+            </StackPanel>
+
             <StackPanel Orientation="Vertical" VerticalAlignment="Bottom" >
                 <TextBlock x:Name="StateMessageBlock" 
                        TextAlignment="Center" 
@@ -57,14 +54,18 @@
                 <TextBlock x:Name="TipMessageBlock" 
                        TextAlignment="Center" 
                        TextWrapping="Wrap" />
-                <StackPanel x:Name="RecognitionButtonsStack" Orientation="Horizontal">
+                <StackPanel x:Name="ContinuousRecognitionButtonsStack" Orientation="Horizontal">
                     <Button Click="WakeButtonOnClick">Wake up</Button>
                     <Button Click="DigitsButtonOnClick" >Digits</Button>
                     <Button Click="MenuButtonOnClick" >Menu</Button>
                 </StackPanel>
+                <StackPanel x:Name="UtteranceRecognitionButtonsStack" Orientation="Horizontal">
+                    <Button x:Name="SingleUtteranceHypothesisButton" Click="SingleUtteranceHypothesisOnClick">Get Hypothesis</Button>
+                    <Button x:Name="SingleUtteranceNbestButton" Click="SingleUtteranceNbestOnClick">Get Nbest</Button>
+                </StackPanel>
             </StackPanel>
 
-            
+
         </Grid>
 
         <ProgressBar Grid.Row="1" 

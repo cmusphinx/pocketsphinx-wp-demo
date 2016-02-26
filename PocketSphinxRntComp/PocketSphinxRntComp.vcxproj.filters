@@ -8,7 +8,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Output.cpp" />
-    <ClCompile Include="pch.cpp" />
     <ClCompile Include="SpeechRecognizer.cpp" />
     <ClCompile Include="WasapiAudio.cpp" />
     <ClCompile Include="libsphinxbase\util\bio.c" />
@@ -95,7 +94,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Output.h" />
-    <ClInclude Include="pch.h" />
     <ClInclude Include="SpeechRecognizer.h" />
     <ClInclude Include="WasapiAudio.h" />
     <ClInclude Include="libsphinxbase\lm\jsgf_internal.h" />

@@ -11,41 +11,59 @@ namespace PocketSphinxRntComp
 {
 	public delegate void ResultFoundHandler(Platform::String^ result);
 
+	public value struct NbestHypotheses
+	{
+		Platform::String^ FinalHypothesis;
+		int32 FinalHypothesisScore;
+		Platform::String^ HypothesesAndScores;
+	};
+
 	public ref class SpeechRecognizer sealed
     {
     public:
 		SpeechRecognizer();
 
-		// STEP 1: Initialize
+		// STEP 1: Initialize (pick one)
 		Platform::String^ Initialize(Platform::String^ hmmFilePath, Platform::String^ dictFilePath);
-		Platform::String^ InitializePhonemeRecognition(Platform::String^ hmmFolderPath);
+		Platform::String^ InitializePhonemeRecognition(Platform::String^ hmmFilePath);
 
-		// STEP 1.1: Load search(es)
-		Platform::String^ AddKeyphraseSearch(Platform::String^ name, Platform::String^ keyphrase);
-		Platform::String^ AddGrammarSearch(Platform::String^ name, Platform::String^ filePath);
-		Platform::String^ AddNgramSearch(Platform::String^ name, Platform::String^ filePath);
-		Platform::String^ AddPhonesSearch(Platform::String^ name, Platform::String^ filePath);
+		// STEP 2: Load search or multiple searches (currently Phone search needs to work solely)
+		Platform::String^ AddKeyphraseSearch(Platform::String^ searchName, Platform::String^ keyphrase);
+		Platform::String^ AddGrammarSearch(Platform::String^ searchName, Platform::String^ filePath);
+		Platform::String^ AddNgramSearch(Platform::String^ searchName, Platform::String^ filePath);
+		Platform::String^ AddPhonesSearch(Platform::String^ searchName, Platform::String^ filePath);
 		
-		// STEP 2: Set search
-		Platform::String^ SetSearch(Platform::String^ name);		
+		// STEP 3: Set search
+		Platform::String^ SetSearch(Platform::String^ searchName);
 
-		// STEP 3: Start processing
+		///
+		/// X: Continuous recognition (get result by events)
+		///
+
+		// STEP 4.X: Start processing
 		Platform::String^ StartProcessing(void);
 		Platform::String^ StopProcessing(void);
 		Platform::String^ RestartProcessing(void);
 		Platform::Boolean IsProcessing(void);
 		
-		// STEP 4: Register incomming audio
+		// STEP 5.X: Register incomming audio
 		int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioBytes);	
 				
-		// STEP 5: Wait for results
+		// STEP 6.X: Wait for results
 		event ResultFoundHandler^ resultFound;
 		event ResultFoundHandler^ resultFinalizedBySilence;
-				
-		Platform::String^ CleanPocketSphinx(void);
 
-		// Test method (to use a raw recorded audio file)
-		Platform::String^ TestPocketSphinx(void);
+		///
+		/// 4.Y: Single utterance recognition (get instant result)
+		///
+		Platform::String^
+			SpeechRecognizer::GetHypothesisFromUtterance(const Platform::Array<uint8>^ audioBytes);
+		NbestHypotheses
+			SpeechRecognizer::GetNbestFromUtterance(const Platform::Array<uint8>^ audioBytes, int32 maximumNBestIterations);
+
+
+		// Extra
+		Platform::String^ CleanPocketSphinx(void); // Clean before you leave
 
 	private:
 		void SpeechRecognizer::OnResultFound(Platform::String^ result);

@@ -28,9 +28,7 @@ void Output::Write(Platform::String^ message)
 {
 #if defined (_DEBUG)
 	std::wstring wStrMessage = std::wstring(message->Begin(), message->End());
-	LPCWSTR messageLPCWSTR = wStrMessage.c_str();
-
-	OutputDebugStringW(messageLPCWSTR);
+	OutputDebugStringW(wStrMessage.c_str());
 #endif
 }
 

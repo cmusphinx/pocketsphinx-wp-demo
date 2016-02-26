@@ -4,6 +4,11 @@
 * intended as kick-start using PocketSphinx on Windows mobile platforms
 */
 
+//#include <collection.h>
+//#include <algorithm>
+//using namespace Platform::Collections;
+//using namespace Windows::Foundation::Collections;
+
 #include "SpeechRecognizer.h"
 
 using namespace PocketSphinxRntComp;
@@ -13,10 +18,13 @@ using namespace Platform;
 #include <sphinxbase/err.h>
 #include <sphinxbase/jsgf.h>
 
+#include "Output.h"
+
 #pragma region Info
 
 // using pocketsphinx demo: http://cmusphinx.sourceforge.net/wiki/tutorialpocketsphinx
 // api pocketsphinx: http://cmusphinx.sourceforge.net/doc/pocketsphinx/
+// reference  http://blog.csdn.net/zouxy09/article/details/7978108
 
 /// a litle part from the Android version:
 
@@ -35,6 +43,8 @@ using namespace Platform;
 //File languageModel = new File(modelsDir, "lm/weather.dmp");
 //recognizer.addNgramSearch(FORECAST_SEARCH, languageModel);
 
+//No new — no delete.In the same way, no malloc(or calloc or realloc) — no free. Isn't that simple?
+
 #pragma endregion
 
 
@@ -44,21 +54,16 @@ using namespace Platform;
 enum RecognitionType { None, Grammatic, Phonemes };
 RecognitionType initializedRecognitionType = RecognitionType::None;
 
-bool hasSearchBeenSet = false;
+ps_decoder_t *decoder;
 
-bool isPreviousInSpeech = false;
-
+bool isSearchSet = false;
+bool isInSpeech = false;
 bool isProcessing = false;
 
-Platform::String^ previousHyp = "";
+Platform::String^ lastHypothesis = "";
 
-ps_decoder_t *ps;
-int score;
-const char *hyp;
-
-char installedFolderPath[1024];
-char localStorageFolder[1024];
-wchar_t whyp[1024];
+char applicationInstallFolderPath[1024];
+char applicationLocalStorageFolder[1024];
 
 #pragma endregion
 
@@ -72,6 +77,7 @@ SpeechRecognizer::SpeechRecognizer()
 
 #pragma region Static Helpers
 
+// Dont forget to free memory after usage "result" output
 static char* concat(char *s1, char *s2)
 {
 	char *result = (char *)malloc(strlen(s1) + strlen(s2) + 1);
@@ -80,25 +86,31 @@ static char* concat(char *s1, char *s2)
 	return result;
 }
 
+// Dont forget to free memory after usage "characters" output
 static char* convertStringToChars(Platform::String^ input)
 {
-	const wchar_t *W = input->Data();
+	const wchar_t *platformCharacters = input->Data();
 
-	int Size = wcslen(W);
-	char *CString = new char[Size + 1];
-	CString[Size] = 0;
-	for (int y = 0; y < Size; y++)
+	int Size = wcslen(platformCharacters);
+	char *characters = new char[Size + 1];
+	characters[Size] = 0;
+	for (int i = 0; i < Size; i++)
 	{
-		CString[y] = (char)W[y];
+		characters[i] = (char)platformCharacters[i];
 	}
 
-	return CString;
+	return characters; 
 }
 
 String^ convertCharsToString(const char* chars)
 {
-	static wchar_t buffer[128];
-	mbstowcs(buffer, chars, 128);
+	if (chars == NULL)
+	{
+		return ref new Platform::String();
+	}
+	
+	static wchar_t buffer[1024];
+	mbstowcs(buffer, chars, 1024);
 	return ref new Platform::String(buffer);
 }
 
@@ -109,7 +121,7 @@ String^ convertCharsToString(const char* chars)
 //// Initialize decoder with default models
 /// hmmFolderPath	== the acoustic model folder (content folder: http://cmusphinx.sourceforge.net/wiki/tutorialam#using_the_model)
 /// dictFilePath	== the dictionary file
-Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, Platform::String^ dictFilePath)
+Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFilePath, Platform::String^ dictFilePath)
 {
 	if (initializedRecognitionType != RecognitionType::None)
 	{
@@ -118,18 +130,21 @@ Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, 
 
 	cmd_ln_t *config;
 
-	// Local Storage Path
-	wcstombs(localStorageFolder, Windows::Storage::ApplicationData::Current->LocalFolder->Path->Data(), 1024);
-	// Installed Folder path
-	wcstombs(installedFolderPath, Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data(), 1024);
+	// Get Local Storage Path
+	wcstombs(applicationLocalStorageFolder, Windows::Storage::ApplicationData::Current->LocalFolder->Path->Data(), 1024);
+	// Get Installed Folder path
+	wcstombs(applicationInstallFolderPath, Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data(), 1024);
 
-	//Error file path
-	char *logPath = concat(localStorageFolder, "\\errors.log");
-	//err_set_logfile(logPath);
+	// Get Error file path (optionaly)
+	char *logPath = concat(applicationLocalStorageFolder, "\\errors.log");
 
-	char *hmmPath = concat(installedFolderPath, convertStringToChars(hmmFolderPath));
-	char *dictPath = concat(installedFolderPath, convertStringToChars(dictFilePath));
+	// Create full hmm and dict file paths
+	auto ChmmFilePath = convertStringToChars(hmmFilePath);
+	auto CdictFilePath = convertStringToChars(dictFilePath);
+	char *hmmPath = concat(applicationInstallFolderPath, ChmmFilePath);
+	char *dictPath = concat(applicationInstallFolderPath, CdictFilePath);
 
+	// Create decoder config
 	config = cmd_ln_init(NULL, ps_args(), TRUE,
 		"-hmm", hmmPath,
 		"-dict", dictPath,
@@ -138,20 +153,27 @@ Platform::String^ SpeechRecognizer::Initialize(Platform::String^ hmmFolderPath, 
 		"-kws_threshold", "1e-40",
 		NULL);
 
-	if (config == NULL)
-		return "No config";
+	// Cleanup
+	free(ChmmFilePath);
+	free(CdictFilePath);
+	free(logPath);
+	free(hmmPath);
+	free(dictPath);
 
-	ps = ps_init(config);
-	if (ps == NULL)
-		return "No decoder";
+	if (config == NULL)
+		return "Could not create a config";
+
+	decoder = ps_init(config);
+	if (decoder == NULL)
+		return "Could not create a decoder";
 
 	initializedRecognitionType = RecognitionType::Grammatic;
-	return "PocketSphinx initialization done";
+	return "PocketSphinx initialized";
 }
 
 // Initialize decoder with default models
-//hmmFolderPath	== the acoustic model folder (content folder: http://cmusphinx.sourceforge.net/wiki/tutorialam#using_the_model)
-Platform::String^ SpeechRecognizer::InitializePhonemeRecognition(Platform::String^ hmmFolderPath)
+//hmmFolderPath	== the acoustic model folder
+Platform::String^ SpeechRecognizer::InitializePhonemeRecognition(Platform::String^ hmmFilePath)
 {
 	if (initializedRecognitionType != RecognitionType::None)
 	{
@@ -160,15 +182,19 @@ Platform::String^ SpeechRecognizer::InitializePhonemeRecognition(Platform::Strin
 
 	cmd_ln_t *config;
 
-	// Local Storage Path
-	wcstombs(localStorageFolder, Windows::Storage::ApplicationData::Current->LocalFolder->Path->Data(), 1024);
-	// Installed Folder path
-	wcstombs(installedFolderPath, Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data(), 1024);
+	// Get Local Storage Path
+	wcstombs(applicationLocalStorageFolder, Windows::Storage::ApplicationData::Current->LocalFolder->Path->Data(), 1024);
+	// Get Installed Folder path
+	wcstombs(applicationInstallFolderPath, Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data(), 1024);
 
-	//Error file path
-	char *logPath = concat(localStorageFolder, "\\errors.log");
-	char *hmmPath = concat(installedFolderPath, convertStringToChars(hmmFolderPath));
+	// Get Error file path (optionaly)
+	char *logPath = concat(applicationLocalStorageFolder, "\\errors.log");
 
+	// Create full hmm file path
+	auto ChmmFilePath = convertStringToChars(hmmFilePath);
+	char *hmmPath = concat(applicationInstallFolderPath, ChmmFilePath);
+
+	// Create decoder config
 	config = cmd_ln_init(NULL, ps_args(), TRUE,
 		"-hmm", hmmPath,
 		"-logfn", logPath,
@@ -178,15 +204,19 @@ Platform::String^ SpeechRecognizer::InitializePhonemeRecognition(Platform::Strin
 		"-pbeam", "1e-20",
 		NULL);
 
-	if (config == NULL)
-		return "No config";
+	free(ChmmFilePath);
+	free(logPath);
+	free(hmmPath);
 
-	ps = ps_init(config);
-	if (ps == NULL)
-		return "No decoder";
+	if (config == NULL)
+		return "Could not create a config";
+
+	decoder = ps_init(config);
+	if (decoder == NULL)
+		return "Could not create a decoder";
 
 	initializedRecognitionType = RecognitionType::Phonemes;
-	return "PocketSphinx initialization done";
+	return "PocketSphinx initialized";
 }
 
 #pragma endregion
@@ -194,88 +224,137 @@ Platform::String^ SpeechRecognizer::InitializePhonemeRecognition(Platform::Strin
 #pragma region Load Methods
 
 //// Add keyword-activation search
-Platform::String^ SpeechRecognizer::AddKeyphraseSearch(Platform::String^ name, Platform::String^ keyphrase)
+Platform::String^ SpeechRecognizer::AddKeyphraseSearch(Platform::String^ searchName, Platform::String^ keyphrase)
 {
 	if (initializedRecognitionType != RecognitionType::Grammatic)
 	{
-		return "Error: This type of search is not initialized";
+		return "Error: This type of decoding is not initialized";
 	}
 
-	char *Cname = convertStringToChars(name);
+	char *Cname = convertStringToChars(searchName);
 	char *Ckeyphrase = convertStringToChars(keyphrase);
 
-	int result = ps_set_keyphrase(ps, Cname, Ckeyphrase);
+	int result = ps_set_keyphrase(decoder, Cname, Ckeyphrase);
 
+	free(Cname);
+	free(Ckeyphrase);
+	
 	return (result == 0) ?
-		Platform::String::Concat(name, " keyphrase search added") :
-		Platform::String::Concat("fault adding keyphrase search: ", name);
+		Platform::String::Concat(searchName, " keyphrase search added") :
+		Platform::String::Concat("fault adding keyphrase search: ", searchName);
 }
 
 //// Add grammar-based searches (like .jsgf or .gram files)
-Platform::String^ SpeechRecognizer::AddGrammarSearch(Platform::String^ name, Platform::String^ filePath)
+Platform::String^ SpeechRecognizer::AddGrammarSearch(Platform::String^ searchName, Platform::String^ filePath)
 {
 	if (initializedRecognitionType != RecognitionType::Grammatic)
 	{
-		return "Error: This type of search is not initialized";
+		return "Error: This type of decoding is not initialized";
 	}
 
-	char *Cname = convertStringToChars(name);
+	char *Cname = convertStringToChars(searchName);
 	char *CfilePath = convertStringToChars(filePath);
-	char *CcompleteFilePath = concat(installedFolderPath, CfilePath);
+	char *CcompleteFilePath = concat(applicationInstallFolderPath, CfilePath);
 
-	//fsg_model_t *pNewFSGModel = jsgf_read_file(CcompleteFilePath, ps_get_logmath(ps), 6.5);
-	//int result = ps_set_fsg(ps, Cname, pNewFSGModel);
-	int result = ps_set_jsgf_file(ps, Cname, CcompleteFilePath);
+	int result = ps_set_jsgf_file(decoder, Cname, CcompleteFilePath);
 
-	// 0 == OK, 1 == fault
+	free(Cname);
+	free(CfilePath);
+	free(CcompleteFilePath);
+
 	return (result == 0)? 
-		Platform::String::Concat(name, " grammar search added"):
-		Platform::String::Concat("fault adding grammar search: ", name);
+		Platform::String::Concat(searchName, " grammar search added") :
+		Platform::String::Concat("fault adding grammar search: ", searchName);
 }
 
 //// Add language model search (like .dmp files)
-Platform::String^ SpeechRecognizer::AddNgramSearch(Platform::String^ name, Platform::String^ filePath)
+Platform::String^ SpeechRecognizer::AddNgramSearch(Platform::String^ searchName, Platform::String^ filePath)
 {
 	if (initializedRecognitionType != RecognitionType::Grammatic)
 	{
-		return "Error: This type of search is not initialized";
+		return "Error: This type of decoding is not initialized";
 	}
 
-	char *Cname = convertStringToChars(name);
+	char *Cname = convertStringToChars(searchName);
 	char *CfilePath = convertStringToChars(filePath);
-	char *CcompleteFilePath = concat(installedFolderPath, CfilePath);
+	char *CcompleteFilePath = concat(applicationInstallFolderPath, CfilePath);
 
-	int result = ps_set_lm_file(ps, Cname, CcompleteFilePath);
+	int result = ps_set_lm_file(decoder, Cname, CcompleteFilePath);
+
+	free(Cname);
+	free(CfilePath);
+	free(CcompleteFilePath);
 
 	return (result == 0) ? 
-		Platform::String::Concat(name, " Ngram search added"):
-		Platform::String::Concat("fault adding Ngram search: ", name);
+		Platform::String::Concat(searchName, " Ngram search added") :
+		Platform::String::Concat("fault adding Ngram search: ", searchName);
 }
 
 //// Add phones search (like .lm.bin files)
-Platform::String^ SpeechRecognizer::AddPhonesSearch(Platform::String^ name, Platform::String^ filePath)
+Platform::String^ SpeechRecognizer::AddPhonesSearch(Platform::String^ searchName, Platform::String^ filePath)
 {
 	if (initializedRecognitionType != RecognitionType::Phonemes)
 	{
-		return "Error: This type of search is not initialized";
+		return "Error: This type of decoding is not initialized";
 	}
 
-	char *Cname = convertStringToChars(name);
+	char *Cname = convertStringToChars(searchName);
 	char *CfilePath = convertStringToChars(filePath);
-	char *CcompleteFilePath = concat(installedFolderPath, CfilePath);
+	char *CcompleteFilePath = concat(applicationInstallFolderPath, CfilePath);
 
-	int result = ps_set_allphone_file(ps, Cname, CcompleteFilePath);
+	int result = ps_set_allphone_file(decoder, Cname, CcompleteFilePath);
+
+	free(Cname);
+	free(CfilePath);
+	free(CcompleteFilePath);
 
 	return (result == 0) ?
-		Platform::String::Concat(name, " Phones search added") :
-		Platform::String::Concat("fault adding Phones search: ", name);
+		Platform::String::Concat(searchName, " Phones search added") :
+		Platform::String::Concat("fault adding Phones search: ", searchName);
 }
 
 #pragma endregion
 
-#pragma region Operation methods
+#pragma region Control methods
 
-/// Start PocketSphinx processing (utt)
+//// Set search
+Platform::String^ SpeechRecognizer::SetSearch(Platform::String^ searchName)
+{
+	char *CsearchName = convertStringToChars(searchName);
+
+	int result = ps_set_search(decoder, CsearchName);
+
+	free(CsearchName);
+
+	if (result == 0)
+	{
+		isSearchSet = true;
+		return Platform::String::Concat("Search set to: ", searchName);
+	}
+	else
+	{
+		return Platform::String::Concat("fault setting search to: ", searchName);
+	}
+}
+
+Platform::String^ SpeechRecognizer::CleanPocketSphinx(void)
+{
+	if (initializedRecognitionType == RecognitionType::None || decoder == nullptr)
+	{
+		return "PocketSphinx is not initialized";
+	}
+
+	ps_free(decoder);
+	initializedRecognitionType = RecognitionType::None;
+
+	return "PocketSphinx resources cleaned";
+}
+
+#pragma endregion
+
+#pragma region Continuous recognition
+
+/// Start PocketSphinx processing (start utterance)
 Platform::String^ SpeechRecognizer::StartProcessing(void)
 {
 	Platform::String^ message;
@@ -284,7 +363,7 @@ Platform::String^ SpeechRecognizer::StartProcessing(void)
 		return message;
 	}
 
-	auto result = ps_start_utt(ps);
+	int result = ps_start_utt(decoder);
 
 	isProcessing = (result == 0);
 
@@ -293,7 +372,7 @@ Platform::String^ SpeechRecognizer::StartProcessing(void)
 		"Error starting PocketShinx processing";
 }
 
-/// Stop PocketSphinx processing (utt)
+/// Stop PocketSphinx processing (end utterance)
 Platform::String^ SpeechRecognizer::StopProcessing(void)
 {
 	Platform::String^ message;
@@ -305,10 +384,10 @@ Platform::String^ SpeechRecognizer::StopProcessing(void)
 	int result = -1;
 	if (isProcessing)
 	{
-		result = ps_end_utt(ps);
+		result = ps_end_utt(decoder);
 	}
-	isPreviousInSpeech = false;
-	previousHyp = "";
+	isInSpeech = false;
+	lastHypothesis = "";
 	isProcessing = false;
 
 	return (result == 0) ?
@@ -325,10 +404,10 @@ Platform::String^ SpeechRecognizer::RestartProcessing(void)
 		return message;
 	}
 
-	auto resultEnding = ps_end_utt(ps);
+	int resultEnding = ps_end_utt(decoder);
 	isProcessing = false;
-	previousHyp = "";
-	auto resultStarting = ps_start_utt(ps);
+	lastHypothesis = "";
+	int resultStarting = ps_start_utt(decoder);
 	isProcessing = (resultStarting == 0);
 
 	return ((resultEnding + resultStarting) == 0 && (resultEnding - resultStarting) == 0) ?
@@ -341,8 +420,6 @@ Platform::Boolean SpeechRecognizer::IsProcessing(void)
 	return isProcessing;
 }
 
-/// Register Audio Bytes -> 
-/// 
 int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioBytes)
 {
 	Platform::String^ message;
@@ -351,24 +428,13 @@ int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioByte
 		return -1;
 	}
 
-	// litle info @ http://blog.csdn.net/zouxy09/article/details/7978108
+	// Set Fields
+	int32 audioLength, score;
+	audioLength = audioBytes->Length / 2;
+	int16 *audioBuffer = new int16[audioLength];
 
-	int const buffSize = 16384;
-	int16 audioBuffer[buffSize];
-	int32 k, ts, rem, score;
-	char const *hyp;
-	char const *uttid;
-	char word[256];
+	char const *hypothesis;
 	bool isCurrentInSpeech = false;
-
-
-	// Length for Int16[]
-	k = audioBytes->Length / 2;
-	if (k > buffSize)
-	{
-		auto errorMessage = Platform::String::Concat("audioBuffer out of bound at RegisterAudioBytes() with bytecount: ", k.ToString());
-		throw ref new OutOfBoundsException(errorMessage);
-	}
 
 	// Convert ByteArray Array<uint8> to Int16[]
 	for (size_t i = 0; i < audioBytes->Length; i += 2)
@@ -376,80 +442,40 @@ int SpeechRecognizer::RegisterAudioBytes(const Platform::Array<uint8>^ audioByte
 		audioBuffer[i / 2] = audioBytes[i] + ((int16)audioBytes[i + 1] << 8);
 	}
 
-	// Proccess bytes
-	int result = ps_process_raw(ps, audioBuffer, k, FALSE, FALSE);
+	// Proccess audio bytes -> return amount of processed bytes
+	int result = ps_process_raw(decoder, audioBuffer, audioLength, FALSE, FALSE);
 
-	// Detect speech
-	isCurrentInSpeech = ps_get_in_speech(ps);
+	// Get In speech indication (silent moments detection)
+	isCurrentInSpeech = ps_get_in_speech(decoder);
 
-	// Get Hyp / Detection
-	hyp = ps_get_hyp(ps, &score);
-	//hyp = ps_get_hyp_final(ps, &score);
-	if (hyp != NULL)
+	// Check if Hypothesis is found (recognized text)
+	hypothesis = ps_get_hyp(decoder, &score);
+	if (hypothesis != NULL)
 	{
-		// Result found
-		//auto hypString = convertCharsToString(hyp);
-		auto newHyp = convertCharsToString(hyp);
-
-		//if (hypString->Equals("oh mighty computer"))
-		//{
-		//	auto resultString = Platform::String::Concat("Recognized: ", hypString);
-		//	OnResultFound(resultString);
-		//}
-
-		if (!newHyp->Equals(previousHyp))
+		// Report changed Hypothesis
+		auto currentHypothesis = convertCharsToString(hypothesis);
+		if (!currentHypothesis->Equals(lastHypothesis))
 		{
-			OnResultFound(newHyp);
+			OnResultFound(currentHypothesis);
 		}
 
-		previousHyp = newHyp;
+		lastHypothesis = currentHypothesis;
 	}
 
-	// Get Hyp when speech ended then restart process cycle
-	if (!isCurrentInSpeech && isPreviousInSpeech)
+	// Report finalized Hypothesis (finalization of utterance)
+	if (!isCurrentInSpeech && isInSpeech)
 	{
-		OnResultFinalizedBySilence(previousHyp);
+		// Report Hypothesis
+		OnResultFinalizedBySilence(lastHypothesis);
 
-		// Restart procces cycle (to get clean Hyp)
+		// Restart procces cycle (to start new utterance)
 		RestartProcessing();
 	}
 
-	isPreviousInSpeech = isCurrentInSpeech;
+	isInSpeech = isCurrentInSpeech;
+	delete[] audioBuffer;
 
 	return result;
-}
-
-
-//// Set search
-Platform::String^ SpeechRecognizer::SetSearch(Platform::String^ name)
-{
-	char *Cname = convertStringToChars(name);
-
-	int result = ps_set_search(ps, Cname);
-
-	if (result == 0)
-	{
-		hasSearchBeenSet = true;
-		return Platform::String::Concat("Search set to: ", name);
-	}
-	else
-	{
-		return Platform::String::Concat("fault setting search to: ", name);
-	}
-}
-
-//// Cleanup PocketSphinx resources
-Platform::String^ SpeechRecognizer::CleanPocketSphinx(void)
-{
-	if (initializedRecognitionType == RecognitionType::None || ps == nullptr)
-	{
-		return "PocketSphinx is not initialized";
-	}
-
-	ps_free(ps);
-	initializedRecognitionType = RecognitionType::None;
-
-	return "PocketSphinx resources cleaned";
 }
 
 Platform::Boolean SpeechRecognizer::IsReadyForProcessing(Platform::String^& message)
@@ -460,7 +486,7 @@ Platform::Boolean SpeechRecognizer::IsReadyForProcessing(Platform::String^& mess
 		return false;
 	}
 	
-	if (!hasSearchBeenSet)
+	if (!isSearchSet)
 	{
 		message = "PocketSphinx has not loaded a search model or the search hasn't been set";
 		return false;
@@ -469,60 +495,144 @@ Platform::Boolean SpeechRecognizer::IsReadyForProcessing(Platform::String^& mess
 	return true;
 }
 
-#pragma region Test Methods
+#pragma region Utterance recognition
 
-//// Test with recorded recording (go 10 years....
-Platform::String^ SpeechRecognizer::TestPocketSphinx(void)
+Platform::String^ SpeechRecognizer::GetHypothesisFromUtterance(const Platform::Array<uint8>^ audioBytes)
 {
-	FILE *fh;
-	fh = fopen(concat(installedFolderPath, "\\Assets\\models\\goforward.raw"), "rb");
-	if (fh == NULL) {
-		return "No file";
+	// Check if system is not working with Continuous recognition
+	if (isProcessing)
+	{
+		throw ref new Exception(1, "Can not use GetHypothesisFromUtterance while running Continuous recognition");
 	}
 
-	ps_decode_raw(ps, fh, -1);
-	hyp = ps_get_hyp(ps, &score);
+	// Set Fields
+	int32 audioLength, score;
+	audioLength = audioBytes->Length / 2;
+	int16 *audioBuffer = new int16[audioLength];
+	
+	// Convert ByteArray Array<uint8> to Int16[]
+	for (size_t i = 0; i < audioBytes->Length; i += 2)
+	{
+		audioBuffer[i / 2] = audioBytes[i] + ((int16)audioBytes[i + 1] << 8);
+	}
 
-	mbstowcs(whyp, hyp, 1024);
+	// Proccess audio bytes
+	int resultStart = ps_start_utt(decoder);
+	int resultProcess = ps_process_raw(decoder, audioBuffer, audioLength, FALSE, TRUE);
+	int resultEnd = ps_end_utt(decoder);
 
-	fclose(fh);
-	return ref new String(whyp);
+	// Get Hypothesis
+	char const *hypothesis = ps_get_hyp(decoder, &score);
+	auto hypothesisString = convertCharsToString(hypothesis);
+
+	// Cleanup and return
+	delete[] audioBuffer;
+	return hypothesisString;
+}
+
+NbestHypotheses SpeechRecognizer::GetNbestFromUtterance
+(const Platform::Array<uint8>^ audioBytes, int32 maximumNBestIterations)
+{
+	// Check if system is not working with Continuous recognition
+	if (isProcessing)
+	{
+		throw ref new Exception(1, "Can not use GetHypothesisFromUtterance while running Continuous recognition");
+	}
+
+	// Set Fields
+	NbestHypotheses nbestHypotheses = NbestHypotheses();
+	char const *hypothesis;
+	char* nbestHypothesesString = (char*)malloc(1); // Temp workaround till good struct
+	strcpy(nbestHypothesesString, "|");  // Temp workaround till good struct
+
+	ps_nbest_t *nbest;
+	//auto vec = ref new Vector<Platform::String^>();
+	int32 audioLength, score;
+	audioLength = audioBytes->Length / 2;
+	int16 *audioBuffer = new int16[audioLength];
+
+	// Convert ByteArray Array<uint8> to Int16[]
+	for (size_t i = 0; i < audioBytes->Length; i += 2)
+	{
+		audioBuffer[i / 2] = audioBytes[i] + ((int16)audioBytes[i + 1] << 8);
+	}
+
+	// Proccess audio bytes
+	int resultStart = ps_start_utt(decoder);
+	int resultProcess = ps_process_raw(decoder, audioBuffer, audioLength, FALSE, TRUE);
+	int resultEnd = ps_end_utt(decoder);
+
+	// Get Final Hypothesis
+	hypothesis = ps_get_hyp(decoder, &score);
+	nbestHypotheses.FinalHypothesis = convertCharsToString(hypothesis);
+	nbestHypotheses.FinalHypothesisScore = score;
+	
+	// Get Nbest Hypotheses
+	nbest = ps_nbest(decoder);
+	for (size_t i = 0; i < maximumNBestIterations && nbest && (nbest = ps_nbest_next(nbest)); i++)
+	{
+		hypothesis = ps_nbest_hyp(nbest, &score);
+		//vec->Append(convertCharsToString(hypothesis));
+
+		if (hypothesis == NULL)
+			continue;
+
+		// Memories old string
+		char* nbestHypothesesMem = (char*)malloc(strlen(nbestHypothesesString));
+		strcpy(nbestHypothesesMem, nbestHypothesesString);
+
+		// Free old string
+		free(nbestHypothesesString);
+
+		// Create new merge strings
+		auto scoreChars =  convertStringToChars(score.ToString());
+
+		nbestHypothesesString = (char*)malloc(strlen(nbestHypothesesMem) + strlen(hypothesis) + strlen(scoreChars) + 2);
+		strcpy(nbestHypothesesString, nbestHypothesesMem);
+		if (i != 0)
+		{
+			strcat(nbestHypothesesString, "|");
+		}
+		strcat(nbestHypothesesString, hypothesis);
+		strcat(nbestHypothesesString, ":");
+		strcat(nbestHypothesesString, scoreChars);
+
+		// Cleanup memory
+		free(scoreChars);
+		free(nbestHypothesesMem);
+	}
+		
+	nbestHypotheses.HypothesesAndScores = convertCharsToString(nbestHypothesesString);
+
+	// Cleanup
+	free(nbestHypothesesString);
+	delete[] audioBuffer;
+	if (nbest)
+	{
+		ps_nbest_free(nbest);
+	}	
+
+	return nbestHypotheses;
 }
 
 #pragma endregion
 
 #pragma endregion
 
-#pragma region Private Methods
-
 #pragma region Event Handlers
+
+void SpeechRecognizer::OnResultFound(Platform::String^ result)
+{
+	this->resultFound(result);
+}
 
 void SpeechRecognizer::OnResultFinalizedBySilence(Platform::String^ finalResult)
 {
 	this->resultFinalizedBySilence(finalResult);
 }
 
-void SpeechRecognizer::OnResultFound(Platform::String^ result)
-{
-	this->resultFound(result);
-
-	// to UI Thread: (can also be done in UI Project)
-	//auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
-	//auto m_dispatcher = window->Dispatcher;
-	//// Since this code is probably running on a worker  
-	//// thread, and we are passing the data back to the  
-	//// UI thread, we have to use a CoreDispatcher object.
-	//m_dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal,
-	//	ref new  Windows::UI::Core::DispatchedHandler([this, result]()
-	//{
-	//	this->resultFoundEvent(result);
-
-	//}, Platform::CallbackContext::Any));
-}
-
 #pragma endregion
 
-#pragma endregion
 
 
 
