@@ -1,17 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Navigation;
-using Microsoft.Phone.Controls;
-using Microsoft.Phone.Shell;
-using PocketSphinxWindowsPhoneDemo.Resources;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using Windows.Storage;
+using Windows.Storage.Streams;
+using Microsoft.Phone.Controls;
 using PocketSphinxRntComp;
 using PocketSphinxWindowsPhoneDemo.Recorder;
-using System.Threading.Tasks;
 
 namespace PocketSphinxWindowsPhoneDemo
 {
@@ -73,10 +71,11 @@ namespace PocketSphinxWindowsPhoneDemo
 
         private void PhoneApplicationPage_Loaded(object sender, RoutedEventArgs e)
         {
-            progressBar.Visibility = System.Windows.Visibility.Collapsed;
+            progressBar.Visibility = Visibility.Collapsed;
             progressBar.IsIndeterminate = false;
 
-            RecognitionButtonsStack.Visibility = Visibility.Collapsed;
+            ContinuousRecognitionButtonsStack.Visibility = Visibility.Collapsed;
+            UtteranceRecognitionButtonsStack.Visibility = Visibility.Collapsed;
             InnitiazeButtonsStack.Visibility = Visibility.Visible;
             StateMessageBlock.Text = "Choose Recognition";
         }
@@ -96,7 +95,8 @@ namespace PocketSphinxWindowsPhoneDemo
             StateMessageBlock.Text = "components are loading";
 
             // Initializing
-            await InitialzeSpeechRecognizer();
+            await InitialzeSpeechRecognizerForContinuous();
+            SetRecognizerMode(Mode);
             InitializeAudioRecorder();
 
             // Start processes
@@ -104,18 +104,41 @@ namespace PocketSphinxWindowsPhoneDemo
             StartNativeRecorder();
 
             // UI            
-            progressBar.Visibility = System.Windows.Visibility.Collapsed;
+            progressBar.Visibility = Visibility.Collapsed;
             progressBar.IsIndeterminate = false;
             ContentPanel.IsHitTestVisible = true;
             StateMessageBlock.Text = "ready for use";
 
             if (!isPhonemeRecognitionEnabled)
             {
-                RecognitionButtonsStack.Visibility = Visibility.Visible;
+                ContinuousRecognitionButtonsStack.Visibility = Visibility.Visible;
 
                 // Set innitial UI state
                 WakeButtonOnClick(this, null);
             }
+        }
+
+        private async void LoadOnlyForSingleUtteranceRecognitionAsync()
+        {
+            InnitiazeButtonsStack.Visibility = Visibility.Collapsed;
+
+            progressBar.IsIndeterminate = true;
+            ContentPanel.IsHitTestVisible = false;
+
+            StateMessageBlock.Text = "components are loading";
+
+            // Initializing
+            await InitialzeSpeechRecognizerForSingleUtterance();
+            speechRecognizer.SetSearch("goforward");
+
+            // UI            
+            progressBar.Visibility = Visibility.Collapsed;
+            progressBar.IsIndeterminate = false;
+            ContentPanel.IsHitTestVisible = true;
+            StateMessageBlock.Text = "ready for use";
+            TipMessageBlock.Text = "this example operates with a recorded file";
+
+            UtteranceRecognitionButtonsStack.Visibility = Visibility.Visible;
         }
 
         #endregion
@@ -132,6 +155,11 @@ namespace PocketSphinxWindowsPhoneDemo
         {
             _mode = RecognizerMode.Phones;
             LoadRecognitionAsync(true);
+        }
+
+        private void InitializeUtteranceButtonOnClick(object sender, RoutedEventArgs e)
+        {
+            LoadOnlyForSingleUtteranceRecognitionAsync();
         }
 
         private void WakeButtonOnClick(object sender, RoutedEventArgs e)
@@ -152,62 +180,39 @@ namespace PocketSphinxWindowsPhoneDemo
             TipMessageBlock.Text = string.Format("tip: say '{0}'", string.Join(",", MenuValues));
         }
 
+        private async void SingleUtteranceHypothesisOnClick(object sender, RoutedEventArgs e)
+        {
+            SingleUtteranceNbestButton.IsEnabled = false;
+            SingleUtteranceHypothesisButton.IsEnabled = false;
+            TipMessageBlock.Text = String.Empty;
+            FoundText(string.Empty);
+
+            var hypothesis = await GetHypothesisFromUtterance();
+
+            SingleUtteranceNbestButton.IsEnabled = true;
+            SingleUtteranceHypothesisButton.IsEnabled = true;
+
+            FoundText(hypothesis);
+        }
+        
+        private async void SingleUtteranceNbestOnClick(object sender, RoutedEventArgs e)
+        {
+            SingleUtteranceNbestButton.IsEnabled = false;
+            SingleUtteranceHypothesisButton.IsEnabled = false;
+            TipMessageBlock.Text = String.Empty;
+            FoundText(string.Empty);
+
+            var hypothesis = await GetNBestFromUtterance();
+            
+            SingleUtteranceNbestButton.IsEnabled = true;
+            SingleUtteranceHypothesisButton.IsEnabled = true;
+
+            FoundText(hypothesis);
+        }
+
         #endregion
 
-        #region Business Logic Methods
-
-        private void FindMatchToToggle(string recognizedText)
-        {
-            bool matchFound = false; 
-
-            switch (Mode)
-            {
-                case RecognizerMode.Wakeup:
-                    matchFound = (recognizedText == WakeupText);
-                    break;
-                case RecognizerMode.Digits:
-                    var recognizedWords = recognizedText.Split(' ');
-                    foreach (var word in recognizedWords)
-                    {
-                        if (DigitValues.Contains(word.ToLower()))
-                        {
-                            recognizedText = word;
-                            matchFound = true;
-                        }
-                    }                    
-                    break;
-                case RecognizerMode.Menu:
-                    matchFound = (MenuValues.Contains(recognizedText.ToLower()));
-                    break;
-            }
-
-            if (matchFound)
-            {
-                MainMessageBlock.Text = recognizedText;
-                ToggleSearch();
-            }
-        }
-
-        private void ToggleSearch()
-        {
-            switch(Mode)
-            {
-                case RecognizerMode.Wakeup:
-                    Mode = RecognizerMode.Digits;
-                    break;
-                case RecognizerMode.Digits:
-                    Mode = RecognizerMode.Menu;
-                    break;
-                case RecognizerMode.Menu:
-                    Mode = RecognizerMode.Digits;
-                    break;
-            }
-        }
-
-        private void FoundText(string recognizedText)
-        {
-            MainMessageBlock.Text = recognizedText;
-        }
+        #region Common Methods
 
         private void SetRecognizerMode(RecognizerMode mode)
         {
@@ -222,11 +227,16 @@ namespace PocketSphinxWindowsPhoneDemo
             ModeMessageBlock.Text = string.Format("running '{0}' mode", mode);
         }
 
+        private void FoundText(string recognizedText)
+        {
+            MainMessageBlock.Text = recognizedText;
+        }
+
         #endregion
 
-        #region SpeechRecognizer Methods (PocketSphinx)
+        #region SpeechRecognizer Methods (PocketSphinx) - Continuous
 
-        private async Task InitialzeSpeechRecognizer()
+        private async Task InitialzeSpeechRecognizerForContinuous()
         {
             List<string> initResults = new List<string>();
 
@@ -264,8 +274,6 @@ namespace PocketSphinxWindowsPhoneDemo
                         initResults.Add(initResult);
                     });
                 }
-
-                SetRecognizerMode(Mode);
             }
             catch (Exception ex)
             {
@@ -321,7 +329,6 @@ namespace PocketSphinxWindowsPhoneDemo
         void speechRecognizer_resultFinalizedBySilence(string finalResult)
         {
             Debug.WriteLine("final result found: {0}", finalResult);
-            //FindMatchToToggle(finalResult);
             FoundText(finalResult);
         }
 
@@ -333,13 +340,105 @@ namespace PocketSphinxWindowsPhoneDemo
 
         #endregion
 
+        #region SpeechRecognizer Methods (PocketSphinx) - Single Utterance
+
+        private async Task InitialzeSpeechRecognizerForSingleUtterance()
+        {
+            List<string> initResults = new List<string>();
+
+            try
+            {
+                AudioContainer.SphinxSpeechRecognizer = new SpeechRecognizer();
+                speechRecognizer = AudioContainer.SphinxSpeechRecognizer;
+
+                await Task.Run(() =>
+                {
+                    var initResult = speechRecognizer.Initialize("\\Assets\\models\\hmm\\en-us", "\\Assets\\models\\dict\\cmu07a.dic");
+                    initResults.Add(initResult);
+                    initResult = speechRecognizer.AddNgramSearch("goforward", "\\Assets\\models\\lm\\en-us.lm.bin");
+                    initResults.Add(initResult);
+                });
+            }
+            catch (Exception ex)
+            {
+                var initResult = ex.Message;
+                initResults.Add(initResult);
+            }
+
+            foreach (var result in initResults)
+            {
+                Debug.WriteLine(result);
+            }
+        }
+
+        private async Task<string> GetHypothesisFromUtterance()
+        {
+            var fileName = @"Assets\recording\goforward.raw";
+            var file = await Windows.ApplicationModel.Package.Current.InstalledLocation.GetFileAsync(fileName);
+            var fileStream = await file.OpenStreamForReadAsync();
+
+            var fileContent = new Byte[fileStream.Length];
+            await fileStream.ReadAsync(fileContent, 0, Convert.ToInt32(fileStream.Length));
+
+            return await GetHypothesisFromUtteranceAsync(fileContent);
+        }
+
+        private Task<String> GetHypothesisFromUtteranceAsync(Byte[] fileContent)
+        {
+            return new TaskFactory<String>().StartNew(() =>
+            {
+                return speechRecognizer.GetHypothesisFromUtterance(fileContent);
+            });
+        }
+
+        private async Task<string> GetNBestFromUtterance()
+        {
+            var fileName = @"Assets\recording\goforward.raw";
+            var file = await Windows.ApplicationModel.Package.Current.InstalledLocation.GetFileAsync(fileName);
+            var fileStream = await file.OpenStreamForReadAsync();
+
+            var fileContent = new Byte[fileStream.Length];
+            await fileStream.ReadAsync(fileContent, 0, Convert.ToInt32(fileStream.Length));
+
+            var nbest = await GetNbestFromUtteranceAsync(fileContent);
+            
+            // Temp work around till beter type from c++ ready
+            var kvpResults = nbest.HypothesesAndScores.Substring(1, nbest.HypothesesAndScores.Length-1).Split('|');
+            var nbestCollection = new Tuple<string, Int32>[kvpResults.Length];
+            for (int i = 0; i < kvpResults.Length; i++)
+            {
+                var kvpItems = kvpResults[i].Split(':');
+
+                Int32 nBestScore;
+                if (!Int32.TryParse(kvpItems[1], out nBestScore))
+                {
+                    nBestScore = 0;
+                }
+
+                nbestCollection[i] = Tuple.Create(kvpItems[0], nBestScore);
+            }
+            TipMessageBlock.Text = string.Format("{0} nbest found", nbestCollection.Length);
+
+            return nbest.FinalHypothesis;
+        }
+
+        private Task<NbestHypotheses> GetNbestFromUtteranceAsync(Byte[] fileContent)
+        {
+            return new TaskFactory<NbestHypotheses>().StartNew(() =>
+            {
+                return speechRecognizer.GetNbestFromUtterance(fileContent, 5);
+            });
+        }
+
+        #endregion
+
         #region Recording Methods
 
         private void InitializeAudioRecorder()
         {
             AudioContainer.AudioRecorder = new WasapiAudioRecorder();
             audioRecorder = AudioContainer.AudioRecorder;
-            audioRecorder.BufferReady += audioRecorder_BufferReady;
+            audioRecorder.AudioReported += audioRecorder_BufferReady;
 
             Debug.WriteLine("AudioRecorder Initialized");
         }

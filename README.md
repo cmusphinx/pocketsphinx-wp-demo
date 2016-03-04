@@ -22,8 +22,14 @@ WasapiAudio == Microphone recorder (Wasapi)
 - no HOW TO needed
 
 SpeechRecognizer == PocketSphinx implementation
-- STEP 1: initialize and load (initialize Model and Dictionary, and at least 1 search)
-- STEP 2: set search (activate search by name)
-- STEP 3: start processing (start the enigine)
-- STEP 4: register incomming audio
-- STEP 5: wait for the events....
+- STEP 1: initialize (pick one)
+- STEP 2: load (at least 1 search)
+- STEP 3: set search (activate search by name you just loaded)
+
+For Continuous recognition (get result by events)
+- STEP 4.X: start processing (start the engine)
+- STEP 5.X: register incomming audio (report microphone audio bytes continuously)
+- STEP 6.X: wait for the events.... 
+
+For Single utterance recognition (get instant result)
+- STEP 4.Y: get result from a single recording (decode bytes from audio file or finished recording from microphone)

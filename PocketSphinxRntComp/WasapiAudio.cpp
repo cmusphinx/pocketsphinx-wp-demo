@@ -1,5 +1,4 @@
-﻿#include "pch.h"
-#include "WasapiAudio.h"
+﻿#include "WasapiAudio.h"
 
 using namespace PocketSphinxRntComp;
 using namespace Platform;

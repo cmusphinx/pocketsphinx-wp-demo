@@ -215,9 +215,6 @@
     <ClCompile Include="Output.cpp">
       <CompileAsWinRT>true</CompileAsWinRT>
     </ClCompile>
-    <ClCompile Include="pch.cpp">
-      <CompileAsWinRT>true</CompileAsWinRT>
-    </ClCompile>
     <ClCompile Include="SpeechRecognizer.cpp">
       <CompileAsWinRT>true</CompileAsWinRT>
     </ClCompile>
@@ -319,7 +316,6 @@
     <ClInclude Include="libsphinxbase\lm\ngram_model_set.h" />
     <ClInclude Include="libsphinxbase\lm\ngram_model_trie.h" />
     <ClInclude Include="Output.h" />
-    <ClInclude Include="pch.h" />
     <ClInclude Include="SpeechRecognizer.h" />
     <ClInclude Include="WasapiAudio.h" />
   </ItemGroup>
