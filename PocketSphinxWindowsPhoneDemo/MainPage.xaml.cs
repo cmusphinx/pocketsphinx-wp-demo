@@ -203,7 +203,7 @@ namespace PocketSphinxWindowsPhoneDemo
             FoundText(string.Empty);
 
             var hypothesis = await GetNBestFromUtterance();
-            
+
             SingleUtteranceNbestButton.IsEnabled = true;
             SingleUtteranceHypothesisButton.IsEnabled = true;
 
@@ -400,33 +400,22 @@ namespace PocketSphinxWindowsPhoneDemo
             var fileContent = new Byte[fileStream.Length];
             await fileStream.ReadAsync(fileContent, 0, Convert.ToInt32(fileStream.Length));
 
-            var nbest = await GetNbestFromUtteranceAsync(fileContent);
-            
-            // Temp work around till beter type from c++ ready
-            var kvpResults = nbest.HypothesesAndScores.Substring(1, nbest.HypothesesAndScores.Length-1).Split('|');
-            var nbestCollection = new Tuple<string, Int32>[kvpResults.Length];
-            for (int i = 0; i < kvpResults.Length; i++)
-            {
-                var kvpItems = kvpResults[i].Split(':');
+            var nBestHypotheses = await GetNbestFromUtteranceAsync(fileContent);
 
-                Int32 nBestScore;
-                if (!Int32.TryParse(kvpItems[1], out nBestScore))
-                {
-                    nBestScore = 0;
-                }
+            // Some examples to get specific Nbest value
+            var heighestValue = nBestHypotheses.NBest.OrderByDescending(item => item.Score).First();
+            var lowestValue = nBestHypotheses.NBest.OrderBy(item => item.Score).First();
+            var lastValue = nBestHypotheses.NBest.Last();
 
-                nbestCollection[i] = Tuple.Create(kvpItems[0], nBestScore);
-            }
-            TipMessageBlock.Text = string.Format("{0} nbest found", nbestCollection.Length);
-
-            return nbest.FinalHypothesis;
+            TipMessageBlock.Text = string.Format("{0} nbest found", nBestHypotheses.NBest.Count);
+            return nBestHypotheses.FinalHypothesis.Hypothesis;
         }
 
-        private Task<NbestHypotheses> GetNbestFromUtteranceAsync(Byte[] fileContent)
+        private Task<NBestHypotheses> GetNbestFromUtteranceAsync(Byte[] fileContent)
         {
-            return new TaskFactory<NbestHypotheses>().StartNew(() =>
+            return new TaskFactory<NBestHypotheses>().StartNew(() =>
             {
-                return speechRecognizer.GetNbestFromUtterance(fileContent, 5);
+                return speechRecognizer.GetNbestFromUtterance(fileContent, 10000);
             });
         }
 

@@ -4,10 +4,10 @@
 * intended as kick-start using PocketSphinx on Windows mobile platforms
 */
 
-//#include <collection.h>
-//#include <algorithm>
-//using namespace Platform::Collections;
-//using namespace Windows::Foundation::Collections;
+#include <collection.h>
+#include <algorithm>
+using namespace Platform::Collections;
+using namespace Windows::Foundation::Collections;
 
 #include "SpeechRecognizer.h"
 
@@ -530,7 +530,7 @@ Platform::String^ SpeechRecognizer::GetHypothesisFromUtterance(const Platform::A
 	return hypothesisString;
 }
 
-NbestHypotheses SpeechRecognizer::GetNbestFromUtterance
+NBestHypotheses^ SpeechRecognizer::GetNbestFromUtterance
 (const Platform::Array<uint8>^ audioBytes, int32 maximumNBestIterations)
 {
 	// Check if system is not working with Continuous recognition
@@ -540,13 +540,9 @@ NbestHypotheses SpeechRecognizer::GetNbestFromUtterance
 	}
 
 	// Set Fields
-	NbestHypotheses nbestHypotheses = NbestHypotheses();
+	auto nbestHypotheses = ref new NBestHypotheses();
 	char const *hypothesis;
-	char* nbestHypothesesString = (char*)malloc(1); // Temp workaround till good struct
-	strcpy(nbestHypothesesString, "|");  // Temp workaround till good struct
-
 	ps_nbest_t *nbest;
-	//auto vec = ref new Vector<Platform::String^>();
 	int32 audioLength, score;
 	audioLength = audioBytes->Length / 2;
 	int16 *audioBuffer = new int16[audioLength];
@@ -564,48 +560,31 @@ NbestHypotheses SpeechRecognizer::GetNbestFromUtterance
 
 	// Get Final Hypothesis
 	hypothesis = ps_get_hyp(decoder, &score);
-	nbestHypotheses.FinalHypothesis = convertCharsToString(hypothesis);
-	nbestHypotheses.FinalHypothesisScore = score;
-	
+	auto finalHypothesis = ref new HypothesisScoreValuePair();
+	finalHypothesis->Hypothesis = convertCharsToString(hypothesis);
+	finalHypothesis->Score = score;
+	nbestHypotheses->FinalHypothesis = finalHypothesis;
+
 	// Get Nbest Hypotheses
+	auto nBestHypotheses = ref new Vector<HypothesisScoreValuePair^>();
 	nbest = ps_nbest(decoder);
 	for (size_t i = 0; i < maximumNBestIterations && nbest && (nbest = ps_nbest_next(nbest)); i++)
 	{
 		hypothesis = ps_nbest_hyp(nbest, &score);
-		//vec->Append(convertCharsToString(hypothesis));
 
 		if (hypothesis == NULL)
 			continue;
 
-		// Memories old string
-		char* nbestHypothesesMem = (char*)malloc(strlen(nbestHypothesesString));
-		strcpy(nbestHypothesesMem, nbestHypothesesString);
+		auto nHypothesis = ref new HypothesisScoreValuePair();
+		nHypothesis->Hypothesis = convertCharsToString(hypothesis);
+		nHypothesis->Score = score;
 
-		// Free old string
-		free(nbestHypothesesString);
-
-		// Create new merge strings
-		auto scoreChars =  convertStringToChars(score.ToString());
-
-		nbestHypothesesString = (char*)malloc(strlen(nbestHypothesesMem) + strlen(hypothesis) + strlen(scoreChars) + 2);
-		strcpy(nbestHypothesesString, nbestHypothesesMem);
-		if (i != 0)
-		{
-			strcat(nbestHypothesesString, "|");
-		}
-		strcat(nbestHypothesesString, hypothesis);
-		strcat(nbestHypothesesString, ":");
-		strcat(nbestHypothesesString, scoreChars);
-
-		// Cleanup memory
-		free(scoreChars);
-		free(nbestHypothesesMem);
+		nBestHypotheses->Append(nHypothesis);
 	}
 		
-	nbestHypotheses.HypothesesAndScores = convertCharsToString(nbestHypothesesString);
+	nbestHypotheses->NBest = nBestHypotheses;
 
 	// Cleanup
-	free(nbestHypothesesString);
 	delete[] audioBuffer;
 	if (nbest)
 	{
