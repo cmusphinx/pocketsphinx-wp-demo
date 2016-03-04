@@ -11,11 +11,46 @@ namespace PocketSphinxRntComp
 {
 	public delegate void ResultFoundHandler(Platform::String^ result);
 
-	public value struct NbestHypotheses
+	public ref class HypothesisScoreValuePair sealed
 	{
-		Platform::String^ FinalHypothesis;
-		int32 FinalHypothesisScore;
-		Platform::String^ HypothesesAndScores;
+		private:
+			Platform::String^ hypothesis;
+			int score;
+		public:
+			property Platform::String^ Hypothesis
+			{
+				Platform::String^ get(){ return hypothesis; }
+				void set(Platform::String^ data) { hypothesis = data; }
+			}
+			property int Score
+			{
+				int get(){ return score; }
+				void set(int data) { score = data; }
+			}
+	};
+
+	public ref class NBestHypotheses sealed
+	{
+		private:
+			HypothesisScoreValuePair^ finalHypothesis;
+			Vector<HypothesisScoreValuePair^>^ nBest;
+		public:
+			property HypothesisScoreValuePair^ FinalHypothesis
+			{
+				HypothesisScoreValuePair^ get(){ return finalHypothesis; }
+				void set(HypothesisScoreValuePair^ data) { finalHypothesis = data; }
+			}
+			property Windows::Foundation::Collections::IVector<HypothesisScoreValuePair^>^ NBest
+			{
+				void set(Windows::Foundation::Collections::IVector<HypothesisScoreValuePair^>^ e)
+				{
+					nBest = safe_cast<Platform::Collections::Vector<HypothesisScoreValuePair^>^>(e);
+				};
+				Windows::Foundation::Collections::IVector<HypothesisScoreValuePair^>^ get()
+				{
+					return nBest;
+				};
+			};
 	};
 
 	public ref class SpeechRecognizer sealed
@@ -58,7 +93,7 @@ namespace PocketSphinxRntComp
 		///
 		Platform::String^
 			SpeechRecognizer::GetHypothesisFromUtterance(const Platform::Array<uint8>^ audioBytes);
-		NbestHypotheses
+		NBestHypotheses^
 			SpeechRecognizer::GetNbestFromUtterance(const Platform::Array<uint8>^ audioBytes, int32 maximumNBestIterations);
 
 
